@@ -6,20 +6,22 @@ import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFa
 const app = document.querySelector('#app');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0x071018);
-scene.fog = new THREE.FogExp2(0x071018, 0.045);
+scene.background = new THREE.Color(0xf4efe6);
+scene.fog = new THREE.FogExp2(0xf4efe6, 0.055);
 
 const camera = new THREE.PerspectiveCamera(
-  70,
+  68,
   window.innerWidth / window.innerHeight,
   0.1,
-  80,
+  60,
 );
-camera.position.set(0, 1.65, 4.3);
+camera.position.set(0, 1.55, 4.1);
+camera.lookAt(0, 1.35, -0.4);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
 renderer.setSize(window.innerWidth, window.innerHeight);
+renderer.outputColorSpace = THREE.SRGBColorSpace;
 renderer.xr.enabled = true;
 renderer.shadowMap.enabled = true;
 renderer.shadowMap.type = THREE.PCFSoftShadowMap;
@@ -32,191 +34,417 @@ document.body.appendChild(vrButton);
 const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster();
 const tempMatrix = new THREE.Matrix4();
-const lastControllerPositions = new WeakMap();
-const controllerVelocities = new WeakMap();
+const pointer = new THREE.Vector2(10, 10);
 
 const modeState = {
-  current: 'aurora',
-  targetColor: new THREE.Color(0x071018),
-  targetFog: new THREE.Color(0x071018),
-  accent: new THREE.Color(0x8bd3dd),
+  current: 'regularme',
+  targetBackground: new THREE.Color(0xf4efe6),
+  targetFog: new THREE.Color(0xf1dfcf),
+  wall: new THREE.Color(0xf6efe4),
+  floor: new THREE.Color(0xe9dfd3),
+  accent: new THREE.Color(0xf3a35f),
+  secondary: new THREE.Color(0xf6c7b4),
+  darkness: 1,
+  pulseSpeed: 0.45,
+  particleDrift: 0.08,
 };
 
 const modes = {
-  aurora: {
-    label: 'Aurora',
-    color: 0x071018,
-    fog: 0x0a1022,
-    accent: 0x93f5d8,
-    secondary: 0xe1a4ff,
-    light: 0x91ffe1,
+  regularme: {
+    label: 'Necesito regularme',
+    background: 0xf6eadc,
+    fog: 0xf2d8c5,
+    wall: 0xf8f0e7,
+    floor: 0xeedfcf,
+    accent: 0xef9b5a,
+    secondary: 0xf4b5a6,
+    text: 0x40271f,
+    darkness: 1.05,
+    pulseSpeed: 0.52,
+    particleDrift: 0.07,
+    audio: 'regularme',
+    ambient: 'ambiente-regularme',
   },
-  ocean: {
-    label: 'Oceano',
-    color: 0x061923,
-    fog: 0x092a38,
-    accent: 0x60d6ff,
-    secondary: 0x4a8bff,
-    light: 0x8fe7ff,
+  pausa: {
+    label: 'Necesito tomar una pausa',
+    background: 0x202236,
+    fog: 0x2b2d45,
+    wall: 0xd9d7df,
+    floor: 0xbfc3d4,
+    accent: 0x7771b6,
+    secondary: 0xc5b6dd,
+    text: 0x29253f,
+    darkness: 0.46,
+    pulseSpeed: 0.18,
+    particleDrift: 0.018,
+    audio: 'pausa',
+    ambient: 'ambiente-pausa',
   },
-  forest: {
-    label: 'Bosque',
-    color: 0x10180f,
-    fog: 0x162414,
-    accent: 0xa4e96f,
-    secondary: 0xffc879,
-    light: 0xd8ffae,
+  reenfocarme: {
+    label: 'Necesito reenfocarme',
+    background: 0xe8f7f8,
+    fog: 0xd6f0f0,
+    wall: 0xf2fbf7,
+    floor: 0xd8eee9,
+    accent: 0x68c9d5,
+    secondary: 0x8bdcba,
+    text: 0x113a44,
+    darkness: 1.16,
+    pulseSpeed: 0.34,
+    particleDrift: 0.035,
+    audio: 'reenfocarme',
+    ambient: 'ambiente-reenfocarme',
   },
 };
 
-const room = new THREE.Group();
-scene.add(room);
+const capsule = new THREE.Group();
+scene.add(capsule);
 
-const floor = new THREE.Mesh(
-  new THREE.CircleGeometry(7, 96),
-  new THREE.MeshStandardMaterial({
-    color: 0x142125,
-    roughness: 0.86,
-    metalness: 0.02,
-  }),
-);
-floor.rotation.x = -Math.PI / 2;
-floor.receiveShadow = true;
-room.add(floor);
-
-const dome = new THREE.Mesh(
-  new THREE.SphereGeometry(18, 64, 32),
-  new THREE.MeshBasicMaterial({
-    color: 0x071018,
-    side: THREE.BackSide,
-  }),
-);
-room.add(dome);
-
-const hemisphereLight = new THREE.HemisphereLight(0xdffcff, 0x182120, 1.45);
-scene.add(hemisphereLight);
-
-const mainLight = new THREE.DirectionalLight(0xbdf9ff, 2.2);
-mainLight.position.set(-2.5, 5, 3);
-mainLight.castShadow = true;
-mainLight.shadow.mapSize.set(1024, 1024);
-scene.add(mainLight);
-
-const accentLight = new THREE.PointLight(0x93f5d8, 6, 10);
-accentLight.position.set(0, 2.4, -2.5);
-scene.add(accentLight);
-
-const createGlowMaterial = (color, opacity = 0.56) =>
-  new THREE.MeshBasicMaterial({
-    color,
-    transparent: true,
-    opacity,
-    blending: THREE.AdditiveBlending,
-    depthWrite: false,
-  });
-
-const ribbons = Array.from({ length: 5 }, (_, index) => {
-  const curve = new THREE.CatmullRomCurve3(
-    Array.from({ length: 10 }, (__, pointIndex) => {
-      const x = (pointIndex - 4.5) * 0.9;
-      const y = 2.8 + Math.sin(pointIndex * 0.9 + index) * 0.22;
-      const z = -4.4 - index * 0.22;
-      return new THREE.Vector3(x, y, z);
-    }),
-  );
-
-  const ribbon = new THREE.Mesh(
-    new THREE.TubeGeometry(curve, 96, 0.018 + index * 0.004, 8, false),
-    createGlowMaterial(index % 2 ? modes.aurora.secondary : modes.aurora.accent),
-  );
-  ribbon.userData.phase = index * 0.72;
-  room.add(ribbon);
-  return ribbon;
+const shellMaterial = new THREE.MeshStandardMaterial({
+  color: modeState.wall,
+  roughness: 0.96,
+  metalness: 0.01,
+  side: THREE.BackSide,
 });
 
-const particleGeometry = new THREE.BufferGeometry();
-const particleCount = 180;
-const particlePositions = new Float32Array(particleCount * 3);
-const particleSeeds = [];
-for (let i = 0; i < particleCount; i += 1) {
-  const radius = 2.2 + Math.random() * 4.2;
-  const angle = Math.random() * Math.PI * 2;
-  particlePositions[i * 3] = Math.cos(angle) * radius;
-  particlePositions[i * 3 + 1] = 0.8 + Math.random() * 3.3;
-  particlePositions[i * 3 + 2] = Math.sin(angle) * radius - 1.2;
-  particleSeeds.push(Math.random() * 100);
-}
-particleGeometry.setAttribute(
-  'position',
-  new THREE.BufferAttribute(particlePositions, 3),
+const shell = new THREE.Mesh(new THREE.SphereGeometry(4.8, 96, 48), shellMaterial);
+shell.scale.set(1.05, 0.62, 1);
+shell.position.y = 1.55;
+shell.receiveShadow = true;
+capsule.add(shell);
+
+const rearPanel = new THREE.Mesh(
+  new THREE.CircleGeometry(3.1, 96),
+  new THREE.MeshStandardMaterial({
+    color: modeState.wall.clone().multiplyScalar(0.96),
+    roughness: 0.98,
+    metalness: 0,
+    side: THREE.DoubleSide,
+  }),
 );
-const particles = new THREE.Points(
-  particleGeometry,
-  new THREE.PointsMaterial({
-    color: modes.aurora.accent,
-    size: 0.045,
+rearPanel.position.set(0, 1.55, -3.18);
+rearPanel.scale.y = 0.72;
+capsule.add(rearPanel);
+
+const floorMaterial = new THREE.MeshStandardMaterial({
+  color: modeState.floor,
+  roughness: 0.9,
+  metalness: 0.02,
+});
+const floor = new THREE.Mesh(new THREE.CircleGeometry(3.85, 128), floorMaterial);
+floor.rotation.x = -Math.PI / 2;
+floor.receiveShadow = true;
+capsule.add(floor);
+
+const floorGlow = new THREE.Mesh(
+  new THREE.RingGeometry(1.05, 3.35, 128),
+  new THREE.MeshBasicMaterial({
+    color: modeState.accent,
     transparent: true,
-    opacity: 0.78,
+    opacity: 0.12,
+    blending: THREE.AdditiveBlending,
     depthWrite: false,
   }),
 );
-room.add(particles);
+floorGlow.rotation.x = -Math.PI / 2;
+floorGlow.position.y = 0.018;
+capsule.add(floorGlow);
+
+const ringLightMesh = new THREE.Mesh(
+  new THREE.TorusGeometry(1.35, 0.028, 16, 160),
+  new THREE.MeshBasicMaterial({
+    color: modeState.accent,
+    transparent: true,
+    opacity: 0.8,
+    blending: THREE.AdditiveBlending,
+  }),
+);
+ringLightMesh.rotation.x = Math.PI / 2;
+ringLightMesh.position.set(0, 2.78, -0.72);
+capsule.add(ringLightMesh);
+
+const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xd9cab8, 1.8);
+scene.add(hemisphereLight);
+
+const topLight = new THREE.PointLight(modeState.accent, 6.5, 8);
+topLight.position.copy(ringLightMesh.position);
+scene.add(topLight);
+
+const floorLight = new THREE.PointLight(modeState.secondary, 2.8, 7);
+floorLight.position.set(0, 0.28, -0.25);
+scene.add(floorLight);
+
+const softFrontLight = new THREE.DirectionalLight(0xffffff, 0.9);
+softFrontLight.position.set(0, 2.8, 2.4);
+scene.add(softFrontLight);
+
+const wallDots = createWallDots();
+capsule.add(wallDots.group);
+
+const focusLines = createFocusLines();
+capsule.add(focusLines);
+
+const prompt = createTextPlane('¿Cómo quieres acompañar este momento?', {
+  width: 1024,
+  height: 160,
+  fontSize: 46,
+  textColor: '#54493d',
+  transparentBackground: true,
+});
+prompt.position.set(0, 2.48, -1.55);
+prompt.scale.set(3.65, 0.32, 1);
+prompt.renderOrder = 40;
+capsule.add(prompt);
 
 const buttonGroup = new THREE.Group();
-buttonGroup.position.set(0, 2.15, -2.05);
-scene.add(buttonGroup);
+buttonGroup.position.set(0, 1.25, -1.55);
+capsule.add(buttonGroup);
 
 const buttonMeshes = [];
-const modeKeys = Object.keys(modes);
-
-modeKeys.forEach((key, index) => {
-  const mode = modes[key];
+const buttonLabels = [];
+Object.entries(modes).forEach(([key, mode], index) => {
   const button = new THREE.Mesh(
-    new THREE.PlaneGeometry(1.22, 0.4),
+    new THREE.PlaneGeometry(3.05, 0.72),
     new THREE.MeshBasicMaterial({
-      map: createButtonTexture(mode.label, mode.accent),
+      map: createButtonTexture(mode.label, mode),
       transparent: true,
-      opacity: key === modeState.current ? 1 : 0.78,
       side: THREE.DoubleSide,
-      depthTest: false,
       depthWrite: false,
     }),
   );
-  button.position.set((index - 1) * 2.05, 0, 0);
-  button.scale.set(1.55, 1.55, 1);
-  button.renderOrder = 20;
-  button.frustumCulled = false;
+  button.position.set(0, (1 - index) * 0.88, 0);
+  button.renderOrder = 30;
   button.userData.mode = key;
-  button.userData.baseScale = new THREE.Vector3(1.55, 1.55, 1);
-  buttonGroup.add(button);
+  button.userData.baseScale = new THREE.Vector3(1, 1, 1);
+  button.userData.targetGlow = key === modeState.current ? 1 : 0.62;
   buttonMeshes.push(button);
+  buttonGroup.add(button);
+
+  const label = createTextPlane(mode.label, {
+    width: 1024,
+    height: 210,
+    fontSize: 74,
+    textColor: `#${mode.text.toString(16).padStart(6, '0')}`,
+    transparentBackground: true,
+    maxWidth: 850,
+    lineHeight: 80,
+  });
+  label.position.set(button.position.x, button.position.y, 0.018);
+  label.scale.set(2.85, 0.62, 1);
+  label.renderOrder = 50;
+  label.userData.mode = key;
+  buttonLabels.push(label);
+  buttonGroup.add(label);
 });
 
-function createButtonTexture(text, color) {
-  const canvas = document.createElement('canvas');
-  canvas.width = 512;
-  canvas.height = 160;
-  const context = canvas.getContext('2d');
-  context.clearRect(0, 0, canvas.width, canvas.height);
+const controllerModelFactory = new XRControllerModelFactory();
+const controllers = [0, 1].map((index) => {
+  const controller = renderer.xr.getController(index);
+  controller.userData.hoveredButton = null;
+  controller.addEventListener('selectstart', () => onSelectStart(controller));
+  scene.add(controller);
 
-  const background = `#${color.toString(16).padStart(6, '0')}`;
-  context.fillStyle = background;
-  roundRect(context, 18, 18, canvas.width - 36, canvas.height - 36, 28);
+  const pointer = new THREE.Line(
+    new THREE.BufferGeometry().setFromPoints([
+      new THREE.Vector3(0, 0, 0),
+      new THREE.Vector3(0, 0, -1),
+    ]),
+    new THREE.LineBasicMaterial({
+      color: 0xffffff,
+      transparent: true,
+      opacity: 0.28,
+    }),
+  );
+  pointer.scale.z = 2.7;
+  controller.add(pointer);
+
+  const grip = renderer.xr.getControllerGrip(index);
+  grip.add(controllerModelFactory.createControllerModel(grip));
+  scene.add(grip);
+
+  return controller;
+});
+
+const audioLibrary = createAudioLibrary();
+let audioUnlocked = false;
+let welcomePlayed = false;
+let activeAmbient = null;
+
+renderer.xr.addEventListener('sessionstart', () => {
+  unlockAudio();
+});
+
+window.addEventListener(
+  'pointerdown',
+  (event) => {
+    unlockAudio();
+    updatePointer(event);
+    const button = getPointerButton();
+    if (button) {
+      setMode(button.userData.mode, { playCue: true });
+      pulseButton(button);
+    }
+  },
+);
+
+window.addEventListener('pointermove', (event) => {
+  updatePointer(event);
+});
+
+function createWallDots() {
+  const group = new THREE.Group();
+  const dots = [];
+
+  for (let i = 0; i < 64; i += 1) {
+    const theta = THREE.MathUtils.degToRad(210 + Math.random() * 120);
+    const y = 0.6 + Math.random() * 1.95;
+    const radius = 3.38 + Math.random() * 0.18;
+    const dot = new THREE.Mesh(
+      new THREE.CircleGeometry(0.012 + Math.random() * 0.017, 18),
+      new THREE.MeshBasicMaterial({
+        color: modeState.secondary,
+        transparent: true,
+        opacity: 0.25 + Math.random() * 0.35,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    dot.position.set(Math.sin(theta) * radius, y, Math.cos(theta) * radius);
+    dot.lookAt(0, y, 0);
+    dot.userData.phase = Math.random() * Math.PI * 2;
+    dot.userData.baseOpacity = dot.material.opacity;
+    group.add(dot);
+    dots.push(dot);
+  }
+
+  return { group, dots };
+}
+
+function createFocusLines() {
+  const group = new THREE.Group();
+
+  for (let i = 0; i < 5; i += 1) {
+    const y = 0.88 + i * 0.18;
+    const curve = new THREE.CatmullRomCurve3([
+      new THREE.Vector3(-1.45, y, -3.05),
+      new THREE.Vector3(-0.52, y + 0.03, -3.18),
+      new THREE.Vector3(0.52, y + 0.03, -3.18),
+      new THREE.Vector3(1.45, y, -3.05),
+    ]);
+    const line = new THREE.Mesh(
+      new THREE.TubeGeometry(curve, 64, 0.006, 8, false),
+      new THREE.MeshBasicMaterial({
+        color: modeState.secondary,
+        transparent: true,
+        opacity: 0.08,
+        blending: THREE.AdditiveBlending,
+        depthWrite: false,
+      }),
+    );
+    line.userData.phase = i * 0.4;
+    group.add(line);
+  }
+
+  return group;
+}
+
+function createTextPlane(text, options) {
+  const texture = createTextTexture(text, options);
+  const plane = new THREE.Mesh(
+    new THREE.PlaneGeometry(1, 1),
+    new THREE.MeshBasicMaterial({
+      map: texture,
+      transparent: true,
+      depthTest: false,
+      depthWrite: false,
+      side: THREE.DoubleSide,
+    }),
+  );
+  plane.renderOrder = 25;
+  return plane;
+}
+
+function createButtonTexture(text, mode) {
+  const canvas = document.createElement('canvas');
+  canvas.width = 1024;
+  canvas.height = 256;
+  const context = canvas.getContext('2d');
+  const accent = `#${mode.accent.toString(16).padStart(6, '0')}`;
+  const secondary = `#${mode.secondary.toString(16).padStart(6, '0')}`;
+
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = 'rgba(255, 252, 246, 0.88)';
+  roundRect(context, 30, 30, canvas.width - 60, canvas.height - 60, 74);
   context.fill();
-  context.strokeStyle = 'rgba(239,255,248,0.78)';
-  context.lineWidth = 6;
+
+  const gradient = context.createLinearGradient(0, 0, canvas.width, 0);
+  gradient.addColorStop(0, accent);
+  gradient.addColorStop(1, secondary);
+  context.strokeStyle = gradient;
+  context.lineWidth = 10;
   context.stroke();
 
-  context.fillStyle = '#06121c';
-  context.font = '800 70px Inter, Arial, sans-serif';
-  context.textAlign = 'center';
-  context.textBaseline = 'middle';
-  context.fillText(text, canvas.width / 2, canvas.height / 2);
+  context.shadowColor = accent;
+  context.shadowBlur = 22;
+  context.strokeStyle = 'rgba(255, 255, 255, 0.42)';
+  context.lineWidth = 3;
+  context.stroke();
+  context.shadowBlur = 0;
 
   const texture = new THREE.CanvasTexture(canvas);
   texture.colorSpace = THREE.SRGBColorSpace;
-
   return texture;
+}
+
+function createTextTexture(text, options) {
+  const canvas = document.createElement('canvas');
+  canvas.width = options.width;
+  canvas.height = options.height;
+  const context = canvas.getContext('2d');
+  context.clearRect(0, 0, canvas.width, canvas.height);
+  context.fillStyle = options.textColor;
+  context.globalAlpha = 0.86;
+  context.font = `700 ${options.fontSize}px Inter, Arial, sans-serif`;
+  context.textAlign = 'center';
+  context.textBaseline = 'middle';
+  if (options.maxWidth) {
+    wrapCanvasText(
+      context,
+      text,
+      canvas.width / 2,
+      canvas.height / 2,
+      options.maxWidth,
+      options.lineHeight,
+    );
+  } else {
+    context.fillText(text, canvas.width / 2, canvas.height / 2);
+  }
+
+  const texture = new THREE.CanvasTexture(canvas);
+  texture.colorSpace = THREE.SRGBColorSpace;
+  return texture;
+}
+
+function wrapCanvasText(context, text, x, y, maxWidth, lineHeight) {
+  const words = text.split(' ');
+  const lines = [];
+  let current = '';
+
+  for (const word of words) {
+    const test = current ? `${current} ${word}` : word;
+    if (context.measureText(test).width > maxWidth && current) {
+      lines.push(current);
+      current = word;
+    } else {
+      current = test;
+    }
+  }
+  lines.push(current);
+
+  const offset = ((lines.length - 1) * lineHeight) / 2;
+  lines.forEach((line, index) => {
+    context.fillText(line, x, y - offset + index * lineHeight);
+  });
 }
 
 function roundRect(context, x, y, width, height, radius) {
@@ -233,115 +461,70 @@ function roundRect(context, x, y, width, height, radius) {
   context.closePath();
 }
 
-const interactables = [];
-const objectMaterials = [
-  new THREE.MeshStandardMaterial({
-    color: 0x9fe7ff,
-    roughness: 0.38,
-    metalness: 0.1,
-    emissive: 0x193b45,
-  }),
-  new THREE.MeshStandardMaterial({
-    color: 0xffd38a,
-    roughness: 0.5,
-    metalness: 0.05,
-    emissive: 0x402a10,
-  }),
-  new THREE.MeshStandardMaterial({
-    color: 0xb9ff9b,
-    roughness: 0.6,
-    metalness: 0.03,
-    emissive: 0x17380e,
-  }),
-];
+function createAudioLibrary() {
+  const files = {
+    bienvenida: '/audio/bienvenida.mp3',
+    regularme: '/audio/regularme.mp3',
+    pausa: '/audio/pausa.mp3',
+    reenfocarme: '/audio/reenfocarme.mp3',
+    'ambiente-regularme': '/audio/ambiente-regularme.mp3',
+    'ambiente-pausa': '/audio/ambiente-pausa.mp3',
+    'ambiente-reenfocarme': '/audio/ambiente-reenfocarme.mp3',
+  };
 
-const objectGeometries = [
-  new THREE.IcosahedronGeometry(0.22, 2),
-  new THREE.SphereGeometry(0.2, 32, 16),
-  new THREE.OctahedronGeometry(0.24, 1),
-  new THREE.TorusKnotGeometry(0.14, 0.045, 80, 12),
-  new THREE.BoxGeometry(0.34, 0.34, 0.34),
-];
-
-for (let i = 0; i < 9; i += 1) {
-  const object = new THREE.Mesh(
-    objectGeometries[i % objectGeometries.length],
-    objectMaterials[i % objectMaterials.length].clone(),
+  return Object.fromEntries(
+    Object.entries(files).map(([key, src]) => {
+      const audio = new Audio(src);
+      audio.preload = 'auto';
+      audio.loop = key.startsWith('ambiente-');
+      audio.volume = key.startsWith('ambiente-') ? 0.34 : 0.78;
+      audio.addEventListener('error', () => {
+        console.warn(`Audio no disponible: ${src}`);
+      });
+      return [key, audio];
+    }),
   );
-  object.position.set(
-    (i % 3 - 1) * 0.82,
-    0.76 + Math.floor(i / 3) * 0.36,
-    -1.95 - Math.floor(i / 3) * 0.3,
-  );
-  object.castShadow = true;
-  object.receiveShadow = true;
-  object.userData.velocity = new THREE.Vector3();
-  object.userData.radius = 0.26;
-  object.userData.floatPhase = i * 0.51;
-  room.add(object);
-  interactables.push(object);
 }
 
-const controllerGroup = new THREE.Group();
-scene.add(controllerGroup);
+function unlockAudio() {
+  audioUnlocked = true;
+  if (!welcomePlayed) {
+    welcomePlayed = true;
+    playAudio('bienvenida');
+  }
+  playAmbient(modes[modeState.current].ambient);
+}
 
-const controllerModelFactory = new XRControllerModelFactory();
-const controllers = [0, 1].map((index) => {
-  const controller = renderer.xr.getController(index);
-  controller.userData.index = index;
-  controller.userData.isSelecting = false;
-  controller.userData.grabbed = null;
-  controller.userData.hoveredButton = null;
-  controller.addEventListener('selectstart', () => onSelectStart(controller));
-  controller.addEventListener('selectend', () => onSelectEnd(controller));
-  controllerGroup.add(controller);
+function playAudio(key) {
+  const audio = audioLibrary[key];
+  if (!audio || !audioUnlocked) return;
+  audio.currentTime = 0;
+  audio.play().catch(() => {
+    console.warn(`Audio no disponible o bloqueado por el navegador: ${audio.src}`);
+  });
+}
 
-  const line = new THREE.Line(
-    new THREE.BufferGeometry().setFromPoints([
-      new THREE.Vector3(0, 0, 0),
-      new THREE.Vector3(0, 0, -1),
-    ]),
-    new THREE.LineBasicMaterial({ color: 0xffffff, transparent: true, opacity: 0.42 }),
-  );
-  line.name = 'pointer';
-  line.scale.z = 2.5;
-  controller.add(line);
+function playAmbient(key) {
+  const next = audioLibrary[key];
+  if (!next || !audioUnlocked) return;
 
-  const grip = renderer.xr.getControllerGrip(index);
-  grip.add(controllerModelFactory.createControllerModel(grip));
-  controllerGroup.add(grip);
-
-  return controller;
-});
-
-function onSelectStart(controller) {
-  controller.userData.isSelecting = true;
-
-  const button = getPointedButton(controller);
-  if (button) {
-    setMode(button.userData.mode);
-    pulseButton(button);
-    return;
+  if (activeAmbient && activeAmbient !== next) {
+    activeAmbient.pause();
+    activeAmbient.currentTime = 0;
   }
 
-  const object = getNearestObject(controller);
-  if (!object) return;
-
-  controller.userData.grabbed = object;
-  object.userData.wasGrabbed = true;
-  object.userData.velocity.set(0, 0, 0);
-  controller.attach(object);
+  activeAmbient = next;
+  activeAmbient.play().catch(() => {
+    console.warn(`Audio ambiente no disponible o bloqueado: ${next.src}`);
+  });
 }
 
-function onSelectEnd(controller) {
-  controller.userData.isSelecting = false;
-  const grabbed = controller.userData.grabbed;
-  if (!grabbed) return;
-
-  room.attach(grabbed);
-  const velocity = controllerVelocities.get(controller) || new THREE.Vector3();
-  grabbed.userData.velocity.copy(velocity).multiplyScalar(1.2);
-  controller.userData.grabbed = null;
+function onSelectStart(controller) {
+  unlockAudio();
+  const button = getPointedButton(controller);
+  if (!button) return;
+  setMode(button.userData.mode, { playCue: true });
+  pulseButton(button);
 }
 
 function getPointedButton(controller) {
@@ -349,140 +532,127 @@ function getPointedButton(controller) {
   raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
   raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
   const hits = raycaster.intersectObjects(buttonMeshes, false);
-  return hits.length && hits[0].distance < 4 ? hits[0].object : null;
+  return hits.length && hits[0].distance < 4.2 ? hits[0].object : null;
 }
 
-function getNearestObject(controller) {
-  const controllerPosition = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-  let nearest = null;
-  let nearestDistance = 0.34;
+function updatePointer(event) {
+  pointer.x = (event.clientX / window.innerWidth) * 2 - 1;
+  pointer.y = -(event.clientY / window.innerHeight) * 2 + 1;
+}
 
-  for (const object of interactables) {
-    if (object.parent !== room) continue;
-    const distance = controllerPosition.distanceTo(object.position);
-    if (distance < nearestDistance) {
-      nearest = object;
-      nearestDistance = distance;
-    }
-  }
-
-  return nearest;
+function getPointerButton() {
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(buttonMeshes, false);
+  return hits.length ? hits[0].object : null;
 }
 
 function pulseButton(button) {
-  button.scale.copy(button.userData.baseScale).multiplyScalar(1.1);
-  setTimeout(() => button.scale.copy(button.userData.baseScale), 130);
+  button.scale.set(1.08, 1.08, 1);
+  setTimeout(() => {
+    button.scale.copy(button.userData.baseScale);
+  }, 140);
 }
 
-function setMode(key) {
+function setMode(key, options = {}) {
   const mode = modes[key];
   modeState.current = key;
-  modeState.targetColor.setHex(mode.color);
+  modeState.targetBackground.setHex(mode.background);
   modeState.targetFog.setHex(mode.fog);
+  modeState.wall.setHex(mode.wall);
+  modeState.floor.setHex(mode.floor);
   modeState.accent.setHex(mode.accent);
+  modeState.secondary.setHex(mode.secondary);
+  modeState.darkness = mode.darkness;
+  modeState.pulseSpeed = mode.pulseSpeed;
+  modeState.particleDrift = mode.particleDrift;
 
   buttonMeshes.forEach((button) => {
     const active = button.userData.mode === key;
-    button.material.opacity = active ? 1 : 0.72;
-    button.userData.baseScale.set(active ? 1.68 : 1.55, active ? 1.68 : 1.55, 1);
+    button.userData.targetGlow = active ? 1 : 0.62;
+    button.userData.baseScale.set(active ? 1.04 : 1, active ? 1.04 : 1, 1);
     button.scale.copy(button.userData.baseScale);
-    button.position.z = active ? 0.04 : 0;
   });
 
-  accentLight.color.setHex(mode.light);
-  particles.material.color.setHex(mode.accent);
-  ribbons.forEach((ribbon, index) => {
-    ribbon.material.color.setHex(index % 2 ? mode.secondary : mode.accent);
-  });
+  if (options.playCue) {
+    playAudio(mode.audio);
+  }
+  playAmbient(mode.ambient);
 }
 
-function updateControllers(delta) {
-  controllers.forEach((controller) => {
-    const current = new THREE.Vector3().setFromMatrixPosition(controller.matrixWorld);
-    const previous = lastControllerPositions.get(controller) || current.clone();
-    controllerVelocities.set(
-      controller,
-      current.clone().sub(previous).divideScalar(Math.max(delta, 0.001)),
-    );
-    lastControllerPositions.set(controller, current);
+function updateControllers() {
+  const pointerButton = getPointerButton();
 
+  controllers.forEach((controller) => {
     const hoveredButton = getPointedButton(controller);
     if (controller.userData.hoveredButton && controller.userData.hoveredButton !== hoveredButton) {
-      controller.userData.hoveredButton.scale.copy(
-        controller.userData.hoveredButton.userData.baseScale,
-      );
+      controller.userData.hoveredButton.userData.targetGlow =
+        controller.userData.hoveredButton.userData.mode === modeState.current ? 1 : 0.62;
     }
-    if (hoveredButton && !controller.userData.isSelecting) {
-      hoveredButton.scale.copy(hoveredButton.userData.baseScale).multiplyScalar(1.04);
+    if (hoveredButton) {
+      hoveredButton.userData.targetGlow = 1.16;
     }
     controller.userData.hoveredButton = hoveredButton;
   });
+
+  buttonMeshes.forEach((button) => {
+    if (button === pointerButton) {
+      button.userData.targetGlow = 1.16;
+    } else if (!controllers.some((controller) => controller.userData.hoveredButton === button)) {
+      button.userData.targetGlow = button.userData.mode === modeState.current ? 1 : 0.62;
+    }
+  });
 }
 
-function updateObjects(delta, elapsed) {
-  for (const object of interactables) {
-    if (object.parent !== room) continue;
+function updateCapsule(delta, elapsed) {
+  const breath = 0.5 + 0.5 * Math.sin(elapsed * modeState.pulseSpeed * Math.PI * 2);
+  const breatheOpacity = 0.1 + breath * 0.12;
 
-    if (!object.userData.wasGrabbed) {
-      object.position.y += Math.sin(elapsed * 0.85 + object.userData.floatPhase) * 0.0009;
-      object.rotation.x += delta * 0.18;
-      object.rotation.y += delta * 0.24;
-      continue;
-    }
+  scene.background.lerp(modeState.targetBackground, 0.018);
+  scene.fog.color.lerp(modeState.targetFog, 0.018);
+  shellMaterial.color.lerp(modeState.wall, 0.018);
+  rearPanel.material.color.lerp(modeState.wall.clone().multiplyScalar(0.96), 0.018);
+  floorMaterial.color.lerp(modeState.floor, 0.018);
 
-    object.userData.velocity.y -= 1.15 * delta;
-    object.position.addScaledVector(object.userData.velocity, delta);
-    object.userData.velocity.multiplyScalar(0.992);
-    object.rotation.x += object.userData.velocity.z * delta;
-    object.rotation.z -= object.userData.velocity.x * delta;
+  ringLightMesh.material.color.lerp(modeState.accent, 0.05);
+  ringLightMesh.material.opacity = 0.42 + breath * 0.38;
+  ringLightMesh.scale.setScalar(1 + breath * 0.012);
 
-    if (object.position.y < object.userData.radius) {
-      object.position.y = object.userData.radius;
-      object.userData.velocity.y = Math.abs(object.userData.velocity.y) * 0.42;
-      object.userData.velocity.x *= 0.82;
-      object.userData.velocity.z *= 0.82;
-    }
+  floorGlow.material.color.lerp(modeState.accent, 0.05);
+  floorGlow.material.opacity = breatheOpacity;
 
-    const horizontal = new THREE.Vector2(object.position.x, object.position.z);
-    const maxRadius = 6.1;
-    if (horizontal.length() > maxRadius) {
-      horizontal.setLength(maxRadius);
-      object.position.x = horizontal.x;
-      object.position.z = horizontal.y;
-      object.userData.velocity.x *= -0.45;
-      object.userData.velocity.z *= -0.45;
-    }
-  }
-}
+  topLight.color.lerp(modeState.accent, 0.05);
+  topLight.intensity = 3.6 * modeState.darkness + breath * 2.1;
+  floorLight.color.lerp(modeState.secondary, 0.05);
+  floorLight.intensity = 1.4 * modeState.darkness + breath * 1.4;
+  hemisphereLight.intensity = 0.9 + modeState.darkness * 0.9;
 
-function updateAtmosphere(delta, elapsed) {
-  scene.background.lerp(modeState.targetColor, 0.025);
-  scene.fog.color.lerp(modeState.targetFog, 0.025);
-  dome.material.color.lerp(modeState.targetFog, 0.018);
-  floor.material.color.lerp(modeState.accent.clone().multiplyScalar(0.18), 0.012);
-
-  accentLight.intensity = 5.6 + Math.sin(elapsed * 1.2) * 0.8;
-  buttonGroup.rotation.y = Math.sin(elapsed * 0.4) * 0.045;
-
-  ribbons.forEach((ribbon) => {
-    ribbon.position.y = Math.sin(elapsed * 0.65 + ribbon.userData.phase) * 0.08;
-    ribbon.rotation.z = Math.sin(elapsed * 0.32 + ribbon.userData.phase) * 0.03;
+  wallDots.dots.forEach((dot, index) => {
+    dot.material.color.lerp(index % 2 ? modeState.accent : modeState.secondary, 0.04);
+    dot.material.opacity =
+      dot.userData.baseOpacity * (0.45 + breath * 0.65) * modeState.darkness;
+    dot.position.y +=
+      Math.sin(elapsed * 0.18 + dot.userData.phase) * modeState.particleDrift * delta;
   });
 
-  const positions = particles.geometry.attributes.position;
-  for (let i = 0; i < particleCount; i += 1) {
-    positions.array[i * 3 + 1] += Math.sin(elapsed * 0.45 + particleSeeds[i]) * 0.0009;
-  }
-  positions.needsUpdate = true;
-  particles.rotation.y += delta * 0.018;
+  focusLines.children.forEach((line, index) => {
+    line.material.color.lerp(modeState.secondary, 0.04);
+    line.material.opacity =
+      modeState.current === 'reenfocarme'
+        ? 0.16 + Math.sin(elapsed * 0.55 + index) * 0.025
+        : 0.035;
+  });
+
+  buttonMeshes.forEach((button) => {
+    const target = button.userData.targetGlow;
+    button.material.opacity = THREE.MathUtils.lerp(button.material.opacity, target, 0.12);
+  });
 }
 
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   const elapsed = clock.elapsedTime;
-  updateControllers(delta);
-  updateAtmosphere(delta, elapsed);
-  updateObjects(delta, elapsed);
+  updateControllers();
+  updateCapsule(delta, elapsed);
   renderer.render(scene, camera);
 }
 
@@ -492,5 +662,5 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-setMode('aurora');
+setMode('regularme');
 renderer.setAnimationLoop(animate);

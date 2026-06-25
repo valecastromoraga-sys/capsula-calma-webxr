@@ -1,12 +1,24 @@
 # Capsula Calma WebXR
 
-Experiencia sensorial relajante creada con Vite, Three.js y WebXR. Esta base esta pensada para lentes Meta Quest: el usuario puede entrar en un espacio inmersivo, escoger entre tres modos de calma y tomar objetos con los controles VR para moverlos o lanzarlos dentro de la escena.
+Experiencia sensorial relajante creada con Vite, Three.js y WebXR. Esta base esta pensada para lentes Meta Quest: el usuario aparece dentro de una capsula interior suave, escoge un modo de acompanamiento y el ambiente cambia con luz, color y movimiento lento.
 
 ## Modos de calma
 
-- **Aurora suave:** luces violetas y verdes con particulas lentas.
-- **Oceano lento:** ambiente azul con movimiento ondulante y sonido visual de marea.
-- **Bosque tibio:** tonos verdes, bruma suave y objetos con movimiento pausado.
+- **Necesito regularme:** luz calida, respiracion visual lenta y puntos suaves que aparecen y desaparecen.
+- **Necesito tomar una pausa:** ambiente mas oscuro, azul noche y violeta profundo, con movimiento casi inmovil.
+- **Necesito reenfocarme:** claridad fria, menta y celeste, con lineas sutiles de orientacion.
+
+## Audio preparado
+
+El codigo espera estos archivos en `public/audio/`. Si alguno no existe, la experiencia muestra un warning en consola y sigue funcionando visualmente.
+
+- `public/audio/bienvenida.mp3`
+- `public/audio/regularme.mp3`
+- `public/audio/pausa.mp3`
+- `public/audio/reenfocarme.mp3`
+- `public/audio/ambiente-regularme.mp3`
+- `public/audio/ambiente-pausa.mp3`
+- `public/audio/ambiente-reenfocarme.mp3`
 
 ## Requisitos
 
@@ -45,5 +57,4 @@ La configuracion `base: './'` en `vite.config.js` permite que los assets funcion
 ## Controles VR
 
 - Apunta a un boton y presiona el gatillo para cambiar de modo.
-- Acerca el control a un objeto y presiona el gatillo para tomarlo.
-- Suelta el gatillo para dejarlo o lanzarlo con la velocidad del control.
+- Cada modo cambia la iluminacion, los puntos de luz y la sensacion general de la capsula.

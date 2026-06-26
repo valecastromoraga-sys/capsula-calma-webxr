@@ -348,10 +348,13 @@ const controllers = [0, 1].map((index) => {
 const audioLibrary = createAudioLibrary();
 let audioUnlocked = false;
 let welcomePlayed = false;
+let welcomePending = false;
+let welcomePlaybackId = 0;
 let experienceStarted = false;
 let activeAmbient = null;
 const ambientFadeTimers = new WeakMap();
 let activeVoice = null;
+const loggedAudioReady = new Set();
 
 renderer.xr.addEventListener('sessionstart', () => {
   unlockAudio();
@@ -559,12 +562,23 @@ function createAudioLibrary() {
   return Object.fromEntries(
     Object.entries(files).map(([key, src]) => {
       const audio = new Audio(src);
-      audio.preload = 'none';
+      audio.preload = key === 'bienvenida' ? 'auto' : 'none';
       audio.loop = key.startsWith('ambiente-');
       audio.volume = key.startsWith('ambiente-') ? 0 : 0.92;
       audio.userData = {
+        key,
         targetVolume: key.startsWith('ambiente-') ? 0.055 : 0.92,
       };
+      if (key === 'bienvenida') {
+        audio.addEventListener(
+          'canplaythrough',
+          () => {
+            logAudioReady('bienvenida');
+          },
+          { once: true },
+        );
+        audio.load();
+      }
       audio.addEventListener('error', () => {
         console.warn(`Audio no disponible: ${src}`);
       });
@@ -578,7 +592,7 @@ function unlockAudio({ playWelcome = false } = {}) {
   if (playWelcome) {
     playWelcomeOnce();
   }
-  if (experienceStarted) {
+  if (experienceStarted && !welcomePending) {
     playAmbient(modes[modeState.current].ambient);
   }
 }
@@ -587,13 +601,101 @@ function startExperience() {
   if (experienceStarted) return;
   experienceStarted = true;
   unlockAudio({ playWelcome: true });
-  playAmbient(modes[modeState.current].ambient);
 }
 
 function playWelcomeOnce() {
   if (welcomePlayed) return;
   welcomePlayed = true;
-  playVoice('bienvenida', { duckAmbient: false });
+  welcomePending = true;
+  playLoadedWelcome(++welcomePlaybackId);
+}
+
+async function playLoadedWelcome(playbackId) {
+  const audio = audioLibrary.bienvenida;
+  if (!audio || !audioUnlocked) return;
+
+  const ready = await ensureAudioReady(audio, 'bienvenida');
+  if (!ready) {
+    welcomePending = false;
+    if (experienceStarted) {
+      playAmbient(modes[modeState.current].ambient);
+    }
+    return;
+  }
+  if (playbackId !== welcomePlaybackId || !welcomePending) return;
+
+  if (activeVoice && activeVoice !== audio) {
+    stopVoice(activeVoice, 160);
+  }
+
+  activeVoice = audio;
+  audio.pause();
+  audio.currentTime = 0;
+  audio.volume = audio.userData?.targetVolume ?? 0.92;
+  audio.onended = () => {
+    console.log('bienvenida terminada');
+    welcomePending = false;
+    releaseVoice(audio);
+    if (experienceStarted) {
+      playAmbient(modes[modeState.current].ambient);
+    }
+  };
+
+  audio
+    .play()
+    .then(() => {
+      if (playbackId === welcomePlaybackId) {
+        console.log('bienvenida reproducida');
+      }
+    })
+    .catch(() => {
+      console.warn(`Audio no disponible o bloqueado por el navegador: ${audio.src}`);
+      welcomePending = false;
+      releaseVoice(audio);
+      if (experienceStarted) {
+        playAmbient(modes[modeState.current].ambient);
+      }
+    });
+}
+
+function ensureAudioReady(audio, key) {
+  if (audio.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
+    logAudioReady(key);
+    return Promise.resolve(true);
+  }
+
+  audio.load();
+
+  return new Promise((resolve) => {
+    let settled = false;
+    const cleanup = () => {
+      audio.removeEventListener('canplaythrough', handleReady);
+      audio.removeEventListener('error', handleError);
+    };
+    const finish = (result) => {
+      if (settled) return;
+      settled = true;
+      cleanup();
+      resolve(result);
+    };
+    const handleReady = () => {
+      logAudioReady(key);
+      finish(true);
+    };
+    const handleError = () => {
+      console.warn(`Audio no disponible: ${audio.src}`);
+      finish(false);
+    };
+
+    audio.addEventListener('canplaythrough', handleReady);
+    audio.addEventListener('error', handleError);
+  });
+}
+
+function logAudioReady(key) {
+  if (key !== 'bienvenida' || loggedAudioReady.has(key)) return;
+  loggedAudioReady.add(key);
+  console.log('bienvenida cargada');
 }
 
 function playVoice(key, { duckAmbient = true } = {}) {
@@ -628,6 +730,19 @@ function stopVoice(audio = activeVoice, duration = 180) {
       activeVoice = null;
     }
   });
+}
+
+function stopWelcomeForModeSelection() {
+  const welcomeAudio = audioLibrary.bienvenida;
+  const shouldStopWelcome =
+    welcomePending || activeVoice === welcomeAudio || (welcomeAudio && !welcomeAudio.paused);
+
+  if (!shouldStopWelcome) return;
+
+  console.log('bienvenida detenida por selección de modo');
+  welcomePending = false;
+  welcomePlaybackId += 1;
+  stopVoice(welcomeAudio, 180);
 }
 
 function releaseVoice(audio) {
@@ -756,7 +871,10 @@ function setMode(key, options = {}) {
 
   if (options.playCue) {
     welcomePlayed = true;
-    stopVoice();
+    stopWelcomeForModeSelection();
+    if (activeVoice) {
+      stopVoice();
+    }
     playVoice(mode.audio, { duckAmbient: true });
   }
   playAmbient(mode.ambient);

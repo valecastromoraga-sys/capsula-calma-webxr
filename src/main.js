@@ -7,8 +7,8 @@ import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.j
 const app = document.querySelector('#app');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xcfc2b2);
-scene.fog = new THREE.FogExp2(0xcfc2b2, 0.09);
+scene.background = new THREE.Color(0x9f9284);
+scene.fog = new THREE.FogExp2(0x9f9284, 0.12);
 
 const camera = new THREE.PerspectiveCamera(
   68,
@@ -39,13 +39,13 @@ const pointer = new THREE.Vector2(10, 10);
 
 const modeState = {
   current: 'regularme',
-  targetBackground: new THREE.Color(0xcfc2b2),
-  targetFog: new THREE.Color(0xcab8a8),
-  wall: new THREE.Color(0xe8dfd3),
-  floor: new THREE.Color(0xd8c9b8),
-  accent: new THREE.Color(0xd68a50),
-  secondary: new THREE.Color(0xdfaa98),
-  darkness: 0.66,
+  targetBackground: new THREE.Color(0x9f9284),
+  targetFog: new THREE.Color(0x9f8d7d),
+  wall: new THREE.Color(0xd1c5b7),
+  floor: new THREE.Color(0xbba994),
+  accent: new THREE.Color(0xbd7141),
+  secondary: new THREE.Color(0xc8877f),
+  darkness: 0.42,
   pulseSpeed: 0.45,
   particleDrift: 0.028,
 };
@@ -53,14 +53,14 @@ const modeState = {
 const modes = {
   regularme: {
     label: 'Regularme',
-    background: 0xcbb8a8,
-    fog: 0xc5ab98,
-    wall: 0xe5dbcf,
-    floor: 0xd6c4b0,
-    accent: 0xd28750,
-    secondary: 0xd99b8e,
+    background: 0xa49282,
+    fog: 0x9d8473,
+    wall: 0xd2c5b7,
+    floor: 0xbda995,
+    accent: 0xbf7445,
+    secondary: 0xc7867c,
     text: 0x40271f,
-    darkness: 0.66,
+    darkness: 0.42,
     pulseSpeed: 0.42,
     particleDrift: 0.026,
     audio: 'regularme',
@@ -68,14 +68,14 @@ const modes = {
   },
   pausa: {
     label: 'Pausar',
-    background: 0x242538,
-    fog: 0x27283d,
-    wall: 0xbfc1cf,
-    floor: 0x9fa6ba,
-    accent: 0x5f5a96,
-    secondary: 0x9d92bd,
+    background: 0x171826,
+    fog: 0x1b1c2c,
+    wall: 0x9296a9,
+    floor: 0x71798f,
+    accent: 0x49477d,
+    secondary: 0x776d99,
     text: 0x26223a,
-    darkness: 0.34,
+    darkness: 0.24,
     pulseSpeed: 0.13,
     particleDrift: 0.008,
     audio: 'pausa',
@@ -83,14 +83,14 @@ const modes = {
   },
   reenfocarme: {
     label: 'Reenfocarme',
-    background: 0xc8dada,
-    fog: 0xbad1d1,
-    wall: 0xe4ece8,
-    floor: 0xc8dbd6,
-    accent: 0x5cabb8,
-    secondary: 0x79bfa5,
+    background: 0x9fb9ba,
+    fog: 0x93abaa,
+    wall: 0xcbd7d3,
+    floor: 0xa7c0ba,
+    accent: 0x4c99a4,
+    secondary: 0x63a78e,
     text: 0x113a44,
-    darkness: 0.72,
+    darkness: 0.48,
     pulseSpeed: 0.25,
     particleDrift: 0.012,
     audio: 'reenfocarme',
@@ -166,6 +166,19 @@ floorGlow.rotation.x = -Math.PI / 2;
 floorGlow.position.y = 0.018;
 capsule.add(floorGlow);
 
+const floorEdgeShade = new THREE.Mesh(
+  new THREE.RingGeometry(1.85, 2.66, 128),
+  new THREE.MeshBasicMaterial({
+    color: 0x2d271f,
+    transparent: true,
+    opacity: 0.16,
+    depthWrite: false,
+  }),
+);
+floorEdgeShade.rotation.x = -Math.PI / 2;
+floorEdgeShade.position.y = 0.021;
+capsule.add(floorEdgeShade);
+
 const ringLightMesh = new THREE.Mesh(
   new THREE.TorusGeometry(0.92, 0.018, 16, 160),
   new THREE.MeshBasicMaterial({
@@ -179,18 +192,18 @@ ringLightMesh.rotation.x = Math.PI / 2;
 ringLightMesh.position.set(0, 2.38, -0.58);
 capsule.add(ringLightMesh);
 
-const hemisphereLight = new THREE.HemisphereLight(0xf3eadf, 0xb6aa9e, 0.82);
+const hemisphereLight = new THREE.HemisphereLight(0xe8d9c8, 0x7f766e, 0.52);
 scene.add(hemisphereLight);
 
-const topLight = new THREE.PointLight(modeState.accent, 2.1, 5.4);
+const topLight = new THREE.PointLight(modeState.accent, 1.1, 4.7);
 topLight.position.copy(ringLightMesh.position);
 scene.add(topLight);
 
-const floorLight = new THREE.PointLight(modeState.secondary, 0.9, 4.3);
+const floorLight = new THREE.PointLight(modeState.secondary, 0.34, 3.6);
 floorLight.position.set(0, 0.28, -0.25);
 scene.add(floorLight);
 
-const softFrontLight = new THREE.DirectionalLight(0xfff3e6, 0.28);
+const softFrontLight = new THREE.DirectionalLight(0xffead2, 0.12);
 softFrontLight.position.set(0, 2.8, 2.4);
 scene.add(softFrontLight);
 
@@ -296,20 +309,23 @@ let audioUnlocked = false;
 let welcomePlayed = false;
 let activeAmbient = null;
 const ambientFadeTimers = new WeakMap();
+let activeVoice = null;
 
 renderer.xr.addEventListener('sessionstart', () => {
-  unlockAudio();
+  unlockAudio({ playWelcome: true });
 });
 
 window.addEventListener(
   'pointerdown',
   (event) => {
-    unlockAudio();
     updatePointer(event);
     const button = getPointerButton();
     if (button) {
+      unlockAudio({ playWelcome: false });
       setMode(button.userData.mode, { playCue: true });
       pulseButton(button);
+    } else {
+      unlockAudio({ playWelcome: true });
     }
   },
 );
@@ -503,11 +519,11 @@ function createAudioLibrary() {
   return Object.fromEntries(
     Object.entries(files).map(([key, src]) => {
       const audio = new Audio(src);
-      audio.preload = 'auto';
+      audio.preload = 'none';
       audio.loop = key.startsWith('ambiente-');
-      audio.volume = key.startsWith('ambiente-') ? 0 : 0.9;
+      audio.volume = key.startsWith('ambiente-') ? 0 : 0.92;
       audio.userData = {
-        targetVolume: key.startsWith('ambiente-') ? 0.18 : 0.9,
+        targetVolume: key.startsWith('ambiente-') ? 0.055 : 0.92,
       };
       audio.addEventListener('error', () => {
         console.warn(`Audio no disponible: ${src}`);
@@ -517,23 +533,56 @@ function createAudioLibrary() {
   );
 }
 
-function unlockAudio() {
+function unlockAudio({ playWelcome = false } = {}) {
   audioUnlocked = true;
-  if (!welcomePlayed) {
+  if (playWelcome && !welcomePlayed) {
     welcomePlayed = true;
-    playAudio('bienvenida');
+    playVoice('bienvenida', { duckAmbient: false });
   }
   playAmbient(modes[modeState.current].ambient);
 }
 
-function playAudio(key) {
+function playVoice(key, { duckAmbient = true } = {}) {
   const audio = audioLibrary[key];
   if (!audio || !audioUnlocked) return;
+  if (activeVoice && activeVoice !== audio) {
+    stopVoice(activeVoice, 220);
+  }
+
+  activeVoice = audio;
   audio.volume = audio.userData?.targetVolume ?? 0.9;
   audio.currentTime = 0;
+  if (duckAmbient && activeAmbient) {
+    fadeAudio(activeAmbient, 0.025, 260);
+  }
+  audio.onended = () => {
+    releaseVoice(audio);
+  };
   audio.play().catch(() => {
     console.warn(`Audio no disponible o bloqueado por el navegador: ${audio.src}`);
+    releaseVoice(audio);
   });
+}
+
+function stopVoice(audio = activeVoice, duration = 180) {
+  if (!audio) return;
+  fadeAudio(audio, 0, duration, () => {
+    audio.pause();
+    audio.currentTime = 0;
+    audio.onended = null;
+    if (activeVoice === audio) {
+      activeVoice = null;
+    }
+  });
+}
+
+function releaseVoice(audio) {
+  if (activeVoice !== audio) return;
+  activeVoice = null;
+  audio.onended = null;
+  if (activeAmbient) {
+    fadeAudio(activeAmbient, activeAmbient.userData?.targetVolume ?? 0.055, 700);
+  }
 }
 
 function playAmbient(key) {
@@ -553,7 +602,8 @@ function playAmbient(key) {
   activeAmbient.play().catch(() => {
     console.warn(`Audio ambiente no disponible o bloqueado: ${next.src}`);
   });
-  fadeAudio(activeAmbient, activeAmbient.userData?.targetVolume ?? 0.18, 1200);
+  const targetVolume = activeVoice ? 0.025 : activeAmbient.userData?.targetVolume ?? 0.055;
+  fadeAudio(activeAmbient, targetVolume, 1200);
 }
 
 function fadeAudio(audio, targetVolume, duration = 800, onComplete) {
@@ -577,9 +627,12 @@ function fadeAudio(audio, targetVolume, duration = 800, onComplete) {
 }
 
 function onSelectStart(controller) {
-  unlockAudio();
   const button = getPointedButton(controller);
-  if (!button) return;
+  if (!button) {
+    unlockAudio({ playWelcome: true });
+    return;
+  }
+  unlockAudio({ playWelcome: false });
   setMode(button.userData.mode, { playCue: true });
   pulseButton(button);
 }
@@ -631,7 +684,9 @@ function setMode(key, options = {}) {
   });
 
   if (options.playCue) {
-    playAudio(mode.audio);
+    welcomePlayed = true;
+    stopVoice();
+    playVoice(mode.audio, { duckAmbient: true });
   }
   playAmbient(mode.ambient);
 }
@@ -672,22 +727,22 @@ function updateCapsule(delta, elapsed) {
   floorMaterial.color.lerp(modeState.floor, 0.018);
 
   ringLightMesh.material.color.lerp(modeState.accent, 0.05);
-  ringLightMesh.material.opacity = 0.18 + breath * 0.2;
+  ringLightMesh.material.opacity = 0.1 + breath * 0.12;
   ringLightMesh.scale.setScalar(1 + breath * 0.008);
 
   floorGlow.material.color.lerp(modeState.accent, 0.05);
-  floorGlow.material.opacity = breatheOpacity * 0.44;
+  floorGlow.material.opacity = breatheOpacity * 0.24;
 
   topLight.color.lerp(modeState.accent, 0.05);
-  topLight.intensity = 1.15 * modeState.darkness + breath * 0.64;
+  topLight.intensity = 0.66 * modeState.darkness + breath * 0.34;
   floorLight.color.lerp(modeState.secondary, 0.05);
-  floorLight.intensity = 0.34 * modeState.darkness + breath * 0.32;
-  hemisphereLight.intensity = 0.42 + modeState.darkness * 0.45;
+  floorLight.intensity = 0.16 * modeState.darkness + breath * 0.16;
+  hemisphereLight.intensity = 0.24 + modeState.darkness * 0.28;
 
   wallDots.dots.forEach((dot, index) => {
     dot.material.color.lerp(index % 2 ? modeState.accent : modeState.secondary, 0.04);
     dot.material.opacity =
-      dot.userData.baseOpacity * (0.38 + breath * 0.48) * modeState.darkness;
+      dot.userData.baseOpacity * (0.24 + breath * 0.32) * modeState.darkness;
     dot.position.y +=
       Math.sin(elapsed * 0.18 + dot.userData.phase) * modeState.particleDrift * delta;
   });

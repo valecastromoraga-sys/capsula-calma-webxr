@@ -231,6 +231,7 @@ capsule.add(buttonGroup);
 
 const buttonMeshes = [];
 const buttonLabels = [];
+const modeControls = [];
 Object.entries(modes).forEach(([key, mode], index) => {
   const x = (index - 1) * 1.18;
   const z = Math.abs(index - 1) * 0.12;
@@ -251,11 +252,13 @@ Object.entries(modes).forEach(([key, mode], index) => {
   button.rotation.y = yaw;
   button.renderOrder = 30;
   button.userData.mode = key;
+  button.userData.kind = 'mode';
   button.userData.accent = new THREE.Color(mode.accent);
   button.userData.restEmissive = key === modeState.current ? 0.16 : 0.05;
   button.userData.baseScale = new THREE.Vector3(1, 1, 1);
   button.userData.targetGlow = key === modeState.current ? 0.2 : 0.06;
   buttonMeshes.push(button);
+  modeControls.push(button);
   buttonGroup.add(button);
 
   const label = createTextPlane(mode.label, {
@@ -272,9 +275,47 @@ Object.entries(modes).forEach(([key, mode], index) => {
   label.scale.set(0.92, 0.29, 1);
   label.renderOrder = 50;
   label.userData.mode = key;
+  label.userData.kind = 'mode-label';
   buttonLabels.push(label);
   buttonGroup.add(label);
 });
+
+const startGroup = new THREE.Group();
+startGroup.position.set(0, 1.28, -1.46);
+capsule.add(startGroup);
+
+const startButton = new THREE.Mesh(
+  new RoundedBoxGeometry(1.18, 0.42, 0.085, 8, 0.14),
+  new THREE.MeshStandardMaterial({
+    color: 0xf6efe6,
+    roughness: 0.74,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.92,
+    emissive: new THREE.Color(0xc48a5d),
+    emissiveIntensity: 0.16,
+  }),
+);
+startButton.renderOrder = 70;
+startButton.userData.kind = 'start';
+startButton.userData.baseScale = new THREE.Vector3(1, 1, 1);
+startButton.userData.accent = new THREE.Color(0xc48a5d);
+startButton.userData.targetGlow = 0.16;
+startGroup.add(startButton);
+
+const startLabel = createTextPlane('Comenzar', {
+  width: 512,
+  height: 160,
+  fontSize: 64,
+  textColor: '#3b2a20',
+  transparentBackground: true,
+});
+startLabel.position.set(0, 0.004, 0.061);
+startLabel.scale.set(0.98, 0.3, 1);
+startLabel.renderOrder = 80;
+startGroup.add(startLabel);
+
+const startControls = [startButton];
 
 const controllerModelFactory = new XRControllerModelFactory();
 const controllers = [0, 1].map((index) => {
@@ -307,12 +348,13 @@ const controllers = [0, 1].map((index) => {
 const audioLibrary = createAudioLibrary();
 let audioUnlocked = false;
 let welcomePlayed = false;
+let experienceStarted = false;
 let activeAmbient = null;
 const ambientFadeTimers = new WeakMap();
 let activeVoice = null;
 
 renderer.xr.addEventListener('sessionstart', () => {
-  unlockAudio({ playWelcome: true });
+  unlockAudio();
 });
 
 window.addEventListener(
@@ -321,11 +363,9 @@ window.addEventListener(
     updatePointer(event);
     const button = getPointerButton();
     if (button) {
-      unlockAudio({ playWelcome: false });
-      setMode(button.userData.mode, { playCue: true });
-      pulseButton(button);
+      handleButtonSelection(button);
     } else {
-      unlockAudio({ playWelcome: true });
+      unlockAudio();
     }
   },
 );
@@ -535,11 +575,25 @@ function createAudioLibrary() {
 
 function unlockAudio({ playWelcome = false } = {}) {
   audioUnlocked = true;
-  if (playWelcome && !welcomePlayed) {
-    welcomePlayed = true;
-    playVoice('bienvenida', { duckAmbient: false });
+  if (playWelcome) {
+    playWelcomeOnce();
   }
+  if (experienceStarted) {
+    playAmbient(modes[modeState.current].ambient);
+  }
+}
+
+function startExperience() {
+  if (experienceStarted) return;
+  experienceStarted = true;
+  unlockAudio({ playWelcome: true });
   playAmbient(modes[modeState.current].ambient);
+}
+
+function playWelcomeOnce() {
+  if (welcomePlayed) return;
+  welcomePlayed = true;
+  playVoice('bienvenida', { duckAmbient: false });
 }
 
 function playVoice(key, { duckAmbient = true } = {}) {
@@ -629,19 +683,17 @@ function fadeAudio(audio, targetVolume, duration = 800, onComplete) {
 function onSelectStart(controller) {
   const button = getPointedButton(controller);
   if (!button) {
-    unlockAudio({ playWelcome: true });
+    unlockAudio();
     return;
   }
-  unlockAudio({ playWelcome: false });
-  setMode(button.userData.mode, { playCue: true });
-  pulseButton(button);
+  handleButtonSelection(button);
 }
 
 function getPointedButton(controller) {
   tempMatrix.identity().extractRotation(controller.matrixWorld);
   raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
   raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
-  const hits = raycaster.intersectObjects(buttonMeshes, false);
+  const hits = raycaster.intersectObjects(getSelectableButtons(), false);
   return hits.length && hits[0].distance < 4.2 ? hits[0].object : null;
 }
 
@@ -652,8 +704,27 @@ function updatePointer(event) {
 
 function getPointerButton() {
   raycaster.setFromCamera(pointer, camera);
-  const hits = raycaster.intersectObjects(buttonMeshes, false);
+  const hits = raycaster.intersectObjects(getSelectableButtons(), false);
   return hits.length ? hits[0].object : null;
+}
+
+function getSelectableButtons() {
+  return experienceStarted ? modeControls : startControls;
+}
+
+function handleButtonSelection(button) {
+  unlockAudio();
+
+  if (button.userData.kind === 'start') {
+    startExperience();
+    pulseButton(button);
+    return;
+  }
+
+  if (!experienceStarted) return;
+
+  setMode(button.userData.mode, { playCue: true });
+  pulseButton(button);
 }
 
 function pulseButton(button) {
@@ -693,12 +764,17 @@ function setMode(key, options = {}) {
 
 function updateControllers() {
   const pointerButton = getPointerButton();
+  const selectableButtons = getSelectableButtons();
 
   controllers.forEach((controller) => {
     const hoveredButton = getPointedButton(controller);
     if (controller.userData.hoveredButton && controller.userData.hoveredButton !== hoveredButton) {
-      controller.userData.hoveredButton.userData.targetGlow =
-        controller.userData.hoveredButton.userData.mode === modeState.current ? 0.2 : 0.06;
+      if (controller.userData.hoveredButton.userData.kind === 'start') {
+        controller.userData.hoveredButton.userData.targetGlow = 0.16;
+      } else {
+        controller.userData.hoveredButton.userData.targetGlow =
+          controller.userData.hoveredButton.userData.mode === modeState.current ? 0.2 : 0.06;
+      }
     }
     if (hoveredButton) {
       hoveredButton.userData.targetGlow = 0.28;
@@ -706,11 +782,18 @@ function updateControllers() {
     controller.userData.hoveredButton = hoveredButton;
   });
 
-  buttonMeshes.forEach((button) => {
+  [...modeControls, ...startControls].forEach((button) => {
     if (button === pointerButton) {
       button.userData.targetGlow = 0.28;
-    } else if (!controllers.some((controller) => controller.userData.hoveredButton === button)) {
-      button.userData.targetGlow = button.userData.mode === modeState.current ? 0.2 : 0.06;
+    } else if (
+      selectableButtons.includes(button) &&
+      !controllers.some((controller) => controller.userData.hoveredButton === button)
+    ) {
+      if (button.userData.kind === 'start') {
+        button.userData.targetGlow = 0.16;
+      } else {
+        button.userData.targetGlow = button.userData.mode === modeState.current ? 0.2 : 0.06;
+      }
     }
   });
 }
@@ -763,7 +846,42 @@ function updateCapsule(delta, elapsed) {
       target,
       0.12,
     );
+    const targetOpacity = experienceStarted ? 0.82 : 0.28;
+    button.material.opacity = THREE.MathUtils.lerp(button.material.opacity, targetOpacity, 0.08);
   });
+
+  buttonLabels.forEach((label) => {
+    const targetOpacity = experienceStarted ? 0.86 : 0.22;
+    label.material.opacity = THREE.MathUtils.lerp(label.material.opacity, targetOpacity, 0.08);
+  });
+
+  startControls.forEach((button) => {
+    button.material.emissiveIntensity = THREE.MathUtils.lerp(
+      button.material.emissiveIntensity,
+      button.userData.targetGlow,
+      0.12,
+    );
+    button.material.opacity = THREE.MathUtils.lerp(
+      button.material.opacity,
+      experienceStarted ? 0 : 0.92,
+      0.08,
+    );
+    button.visible = button.material.opacity > 0.02;
+  });
+
+  startLabel.material.opacity = THREE.MathUtils.lerp(
+    startLabel.material.opacity,
+    experienceStarted ? 0 : 0.9,
+    0.08,
+  );
+  startLabel.visible = startLabel.material.opacity > 0.02;
+  startGroup.visible = !experienceStarted || startLabel.visible;
+
+  if (!experienceStarted) {
+    buttonMeshes.forEach((button) => {
+      button.userData.targetGlow = 0.025;
+    });
+  }
 }
 
 function animate() {

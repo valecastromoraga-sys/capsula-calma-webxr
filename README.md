@@ -1,12 +1,12 @@
 # Capsula Calma WebXR
 
-Experiencia sensorial relajante creada con Vite, Three.js y WebXR. Esta base esta pensada para lentes Meta Quest: el usuario aparece dentro de una capsula interior suave, escoge un modo de acompanamiento y el ambiente cambia con luz, color y movimiento lento.
+Experiencia sensorial relajante creada con Vite, Three.js y WebXR. Esta base esta pensada para lentes Meta Quest: el usuario aparece dentro de una capsula interior suave, escoge un modo con placas 3D frontales y el ambiente cambia con luz, color, voz y sonido.
 
 ## Modos de calma
 
-- **Necesito regularme:** luz calida, respiracion visual lenta y puntos suaves que aparecen y desaparecen.
-- **Necesito tomar una pausa:** ambiente mas oscuro, azul noche y violeta profundo, con movimiento casi inmovil.
-- **Necesito reenfocarme:** claridad fria, menta y celeste, con lineas sutiles de orientacion.
+- **Regularme:** luz calida baja, respiracion visual lenta y puntos suaves integrados en la pared.
+- **Pausar:** ambiente mas oscuro, azul noche y violeta apagado, con movimiento casi inmovil.
+- **Reenfocarme:** claridad fria moderada, menta y celeste, con lineas sutiles de orientacion.
 
 ## Audio preparado
 
@@ -56,5 +56,6 @@ La configuracion `base: './'` en `vite.config.js` permite que los assets funcion
 
 ## Controles VR
 
-- Apunta a un boton y presiona el gatillo para cambiar de modo.
+- Apunta a una placa y presiona el gatillo para cambiar de modo.
+- En escritorio tambien puedes seleccionar los modos con el mouse.
 - Cada modo cambia la iluminacion, los puntos de luz y la sensacion general de la capsula.

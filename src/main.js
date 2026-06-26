@@ -2,12 +2,13 @@ import './style.css';
 import * as THREE from 'three';
 import { VRButton } from 'three/addons/webxr/VRButton.js';
 import { XRControllerModelFactory } from 'three/addons/webxr/XRControllerModelFactory.js';
+import { RoundedBoxGeometry } from 'three/addons/geometries/RoundedBoxGeometry.js';
 
 const app = document.querySelector('#app');
 
 const scene = new THREE.Scene();
-scene.background = new THREE.Color(0xf4efe6);
-scene.fog = new THREE.FogExp2(0xf4efe6, 0.055);
+scene.background = new THREE.Color(0xcfc2b2);
+scene.fog = new THREE.FogExp2(0xcfc2b2, 0.09);
 
 const camera = new THREE.PerspectiveCamera(
   68,
@@ -15,8 +16,8 @@ const camera = new THREE.PerspectiveCamera(
   0.1,
   60,
 );
-camera.position.set(0, 1.55, 4.1);
-camera.lookAt(0, 1.35, -0.4);
+camera.position.set(0, 1.5, 2.65);
+camera.lookAt(0, 1.36, -1.1);
 
 const renderer = new THREE.WebGLRenderer({ antialias: true, alpha: true });
 renderer.setPixelRatio(Math.min(window.devicePixelRatio, 2));
@@ -38,60 +39,60 @@ const pointer = new THREE.Vector2(10, 10);
 
 const modeState = {
   current: 'regularme',
-  targetBackground: new THREE.Color(0xf4efe6),
-  targetFog: new THREE.Color(0xf1dfcf),
-  wall: new THREE.Color(0xf6efe4),
-  floor: new THREE.Color(0xe9dfd3),
-  accent: new THREE.Color(0xf3a35f),
-  secondary: new THREE.Color(0xf6c7b4),
-  darkness: 1,
+  targetBackground: new THREE.Color(0xcfc2b2),
+  targetFog: new THREE.Color(0xcab8a8),
+  wall: new THREE.Color(0xe8dfd3),
+  floor: new THREE.Color(0xd8c9b8),
+  accent: new THREE.Color(0xd68a50),
+  secondary: new THREE.Color(0xdfaa98),
+  darkness: 0.66,
   pulseSpeed: 0.45,
-  particleDrift: 0.08,
+  particleDrift: 0.028,
 };
 
 const modes = {
   regularme: {
-    label: 'Necesito regularme',
-    background: 0xf6eadc,
-    fog: 0xf2d8c5,
-    wall: 0xf8f0e7,
-    floor: 0xeedfcf,
-    accent: 0xef9b5a,
-    secondary: 0xf4b5a6,
+    label: 'Regularme',
+    background: 0xcbb8a8,
+    fog: 0xc5ab98,
+    wall: 0xe5dbcf,
+    floor: 0xd6c4b0,
+    accent: 0xd28750,
+    secondary: 0xd99b8e,
     text: 0x40271f,
-    darkness: 1.05,
-    pulseSpeed: 0.52,
-    particleDrift: 0.07,
+    darkness: 0.66,
+    pulseSpeed: 0.42,
+    particleDrift: 0.026,
     audio: 'regularme',
     ambient: 'ambiente-regularme',
   },
   pausa: {
-    label: 'Necesito tomar una pausa',
-    background: 0x202236,
-    fog: 0x2b2d45,
-    wall: 0xd9d7df,
-    floor: 0xbfc3d4,
-    accent: 0x7771b6,
-    secondary: 0xc5b6dd,
-    text: 0x29253f,
-    darkness: 0.46,
-    pulseSpeed: 0.18,
-    particleDrift: 0.018,
+    label: 'Pausar',
+    background: 0x242538,
+    fog: 0x27283d,
+    wall: 0xbfc1cf,
+    floor: 0x9fa6ba,
+    accent: 0x5f5a96,
+    secondary: 0x9d92bd,
+    text: 0x26223a,
+    darkness: 0.34,
+    pulseSpeed: 0.13,
+    particleDrift: 0.008,
     audio: 'pausa',
     ambient: 'ambiente-pausa',
   },
   reenfocarme: {
-    label: 'Necesito reenfocarme',
-    background: 0xe8f7f8,
-    fog: 0xd6f0f0,
-    wall: 0xf2fbf7,
-    floor: 0xd8eee9,
-    accent: 0x68c9d5,
-    secondary: 0x8bdcba,
+    label: 'Reenfocarme',
+    background: 0xc8dada,
+    fog: 0xbad1d1,
+    wall: 0xe4ece8,
+    floor: 0xc8dbd6,
+    accent: 0x5cabb8,
+    secondary: 0x79bfa5,
     text: 0x113a44,
-    darkness: 1.16,
-    pulseSpeed: 0.34,
-    particleDrift: 0.035,
+    darkness: 0.72,
+    pulseSpeed: 0.25,
+    particleDrift: 0.012,
     audio: 'reenfocarme',
     ambient: 'ambiente-reenfocarme',
   },
@@ -107,14 +108,29 @@ const shellMaterial = new THREE.MeshStandardMaterial({
   side: THREE.BackSide,
 });
 
-const shell = new THREE.Mesh(new THREE.SphereGeometry(4.8, 96, 48), shellMaterial);
-shell.scale.set(1.05, 0.62, 1);
-shell.position.y = 1.55;
+const shell = new THREE.Mesh(new THREE.SphereGeometry(3.45, 96, 48), shellMaterial);
+shell.scale.set(1.02, 0.76, 0.92);
+shell.position.y = 1.42;
 shell.receiveShadow = true;
 capsule.add(shell);
 
+const ceilingSoftener = new THREE.Mesh(
+  new THREE.SphereGeometry(2.35, 64, 24, 0, Math.PI * 2, 0, Math.PI * 0.5),
+  new THREE.MeshStandardMaterial({
+    color: modeState.wall.clone().multiplyScalar(0.92),
+    roughness: 0.98,
+    metalness: 0,
+    side: THREE.BackSide,
+    transparent: true,
+    opacity: 0.42,
+  }),
+);
+ceilingSoftener.position.set(0, 1.9, -0.42);
+ceilingSoftener.scale.set(1.15, 0.62, 0.92);
+capsule.add(ceilingSoftener);
+
 const rearPanel = new THREE.Mesh(
-  new THREE.CircleGeometry(3.1, 96),
+  new THREE.CircleGeometry(2.35, 96),
   new THREE.MeshStandardMaterial({
     color: modeState.wall.clone().multiplyScalar(0.96),
     roughness: 0.98,
@@ -122,8 +138,8 @@ const rearPanel = new THREE.Mesh(
     side: THREE.DoubleSide,
   }),
 );
-rearPanel.position.set(0, 1.55, -3.18);
-rearPanel.scale.y = 0.72;
+rearPanel.position.set(0, 1.45, -2.16);
+rearPanel.scale.y = 0.86;
 capsule.add(rearPanel);
 
 const floorMaterial = new THREE.MeshStandardMaterial({
@@ -131,17 +147,17 @@ const floorMaterial = new THREE.MeshStandardMaterial({
   roughness: 0.9,
   metalness: 0.02,
 });
-const floor = new THREE.Mesh(new THREE.CircleGeometry(3.85, 128), floorMaterial);
+const floor = new THREE.Mesh(new THREE.CircleGeometry(2.65, 128), floorMaterial);
 floor.rotation.x = -Math.PI / 2;
 floor.receiveShadow = true;
 capsule.add(floor);
 
 const floorGlow = new THREE.Mesh(
-  new THREE.RingGeometry(1.05, 3.35, 128),
+  new THREE.RingGeometry(0.58, 2.05, 128),
   new THREE.MeshBasicMaterial({
     color: modeState.accent,
     transparent: true,
-    opacity: 0.12,
+    opacity: 0.055,
     blending: THREE.AdditiveBlending,
     depthWrite: false,
   }),
@@ -151,30 +167,30 @@ floorGlow.position.y = 0.018;
 capsule.add(floorGlow);
 
 const ringLightMesh = new THREE.Mesh(
-  new THREE.TorusGeometry(1.35, 0.028, 16, 160),
+  new THREE.TorusGeometry(0.92, 0.018, 16, 160),
   new THREE.MeshBasicMaterial({
     color: modeState.accent,
     transparent: true,
-    opacity: 0.8,
+    opacity: 0.42,
     blending: THREE.AdditiveBlending,
   }),
 );
 ringLightMesh.rotation.x = Math.PI / 2;
-ringLightMesh.position.set(0, 2.78, -0.72);
+ringLightMesh.position.set(0, 2.38, -0.58);
 capsule.add(ringLightMesh);
 
-const hemisphereLight = new THREE.HemisphereLight(0xffffff, 0xd9cab8, 1.8);
+const hemisphereLight = new THREE.HemisphereLight(0xf3eadf, 0xb6aa9e, 0.82);
 scene.add(hemisphereLight);
 
-const topLight = new THREE.PointLight(modeState.accent, 6.5, 8);
+const topLight = new THREE.PointLight(modeState.accent, 2.1, 5.4);
 topLight.position.copy(ringLightMesh.position);
 scene.add(topLight);
 
-const floorLight = new THREE.PointLight(modeState.secondary, 2.8, 7);
+const floorLight = new THREE.PointLight(modeState.secondary, 0.9, 4.3);
 floorLight.position.set(0, 0.28, -0.25);
 scene.add(floorLight);
 
-const softFrontLight = new THREE.DirectionalLight(0xffffff, 0.9);
+const softFrontLight = new THREE.DirectionalLight(0xfff3e6, 0.28);
 softFrontLight.position.set(0, 2.8, 2.4);
 scene.add(softFrontLight);
 
@@ -184,53 +200,63 @@ capsule.add(wallDots.group);
 const focusLines = createFocusLines();
 capsule.add(focusLines);
 
-const prompt = createTextPlane('¿Cómo quieres acompañar este momento?', {
+const prompt = createTextPlane('¿Qué necesitas ahora?', {
   width: 1024,
   height: 160,
-  fontSize: 46,
+  fontSize: 58,
   textColor: '#54493d',
   transparentBackground: true,
 });
-prompt.position.set(0, 2.48, -1.55);
-prompt.scale.set(3.65, 0.32, 1);
+prompt.position.set(0, 1.88, -1.72);
+prompt.scale.set(1.86, 0.3, 1);
 prompt.renderOrder = 40;
 capsule.add(prompt);
 
 const buttonGroup = new THREE.Group();
-buttonGroup.position.set(0, 1.25, -1.55);
+buttonGroup.position.set(0, 1.28, -1.72);
 capsule.add(buttonGroup);
 
 const buttonMeshes = [];
 const buttonLabels = [];
 Object.entries(modes).forEach(([key, mode], index) => {
+  const x = (index - 1) * 1.18;
+  const z = Math.abs(index - 1) * 0.12;
+  const yaw = (1 - index) * 0.18;
   const button = new THREE.Mesh(
-    new THREE.PlaneGeometry(3.05, 0.72),
-    new THREE.MeshBasicMaterial({
-      map: createButtonTexture(mode.label, mode),
+    new RoundedBoxGeometry(1.02, 0.36, 0.075, 8, 0.12),
+    new THREE.MeshStandardMaterial({
+      color: 0xf5efe7,
+      roughness: 0.72,
+      metalness: 0.03,
       transparent: true,
-      side: THREE.DoubleSide,
-      depthWrite: false,
+      opacity: 0.82,
+      emissive: new THREE.Color(mode.accent),
+      emissiveIntensity: key === modeState.current ? 0.16 : 0.05,
     }),
   );
-  button.position.set(0, (1 - index) * 0.88, 0);
+  button.position.set(x, 0, z);
+  button.rotation.y = yaw;
   button.renderOrder = 30;
   button.userData.mode = key;
+  button.userData.accent = new THREE.Color(mode.accent);
+  button.userData.restEmissive = key === modeState.current ? 0.16 : 0.05;
   button.userData.baseScale = new THREE.Vector3(1, 1, 1);
-  button.userData.targetGlow = key === modeState.current ? 1 : 0.62;
+  button.userData.targetGlow = key === modeState.current ? 0.2 : 0.06;
   buttonMeshes.push(button);
   buttonGroup.add(button);
 
   const label = createTextPlane(mode.label, {
-    width: 1024,
-    height: 210,
-    fontSize: 74,
+    width: 512,
+    height: 160,
+    fontSize: 58,
     textColor: `#${mode.text.toString(16).padStart(6, '0')}`,
     transparentBackground: true,
-    maxWidth: 850,
-    lineHeight: 80,
+    maxWidth: 420,
+    lineHeight: 62,
   });
-  label.position.set(button.position.x, button.position.y, 0.018);
-  label.scale.set(2.85, 0.62, 1);
+  label.position.set(x, 0.003, z + 0.052);
+  label.rotation.y = yaw;
+  label.scale.set(0.92, 0.29, 1);
   label.renderOrder = 50;
   label.userData.mode = key;
   buttonLabels.push(label);
@@ -269,6 +295,7 @@ const audioLibrary = createAudioLibrary();
 let audioUnlocked = false;
 let welcomePlayed = false;
 let activeAmbient = null;
+const ambientFadeTimers = new WeakMap();
 
 renderer.xr.addEventListener('sessionstart', () => {
   unlockAudio();
@@ -295,16 +322,16 @@ function createWallDots() {
   const group = new THREE.Group();
   const dots = [];
 
-  for (let i = 0; i < 64; i += 1) {
-    const theta = THREE.MathUtils.degToRad(210 + Math.random() * 120);
-    const y = 0.6 + Math.random() * 1.95;
-    const radius = 3.38 + Math.random() * 0.18;
+  for (let i = 0; i < 42; i += 1) {
+    const theta = THREE.MathUtils.degToRad(218 + Math.random() * 104);
+    const y = 0.58 + Math.random() * 1.58;
+    const radius = 2.34 + Math.random() * 0.12;
     const dot = new THREE.Mesh(
-      new THREE.CircleGeometry(0.012 + Math.random() * 0.017, 18),
+      new THREE.CircleGeometry(0.006 + Math.random() * 0.01, 18),
       new THREE.MeshBasicMaterial({
         color: modeState.secondary,
         transparent: true,
-        opacity: 0.25 + Math.random() * 0.35,
+        opacity: 0.08 + Math.random() * 0.16,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -324,19 +351,19 @@ function createFocusLines() {
   const group = new THREE.Group();
 
   for (let i = 0; i < 5; i += 1) {
-    const y = 0.88 + i * 0.18;
+    const y = 0.82 + i * 0.13;
     const curve = new THREE.CatmullRomCurve3([
-      new THREE.Vector3(-1.45, y, -3.05),
-      new THREE.Vector3(-0.52, y + 0.03, -3.18),
-      new THREE.Vector3(0.52, y + 0.03, -3.18),
-      new THREE.Vector3(1.45, y, -3.05),
+      new THREE.Vector3(-1.08, y, -2.06),
+      new THREE.Vector3(-0.36, y + 0.02, -2.18),
+      new THREE.Vector3(0.36, y + 0.02, -2.18),
+      new THREE.Vector3(1.08, y, -2.06),
     ]);
     const line = new THREE.Mesh(
       new THREE.TubeGeometry(curve, 64, 0.006, 8, false),
       new THREE.MeshBasicMaterial({
         color: modeState.secondary,
         transparent: true,
-        opacity: 0.08,
+        opacity: 0.045,
         blending: THREE.AdditiveBlending,
         depthWrite: false,
       }),
@@ -462,14 +489,15 @@ function roundRect(context, x, y, width, height, radius) {
 }
 
 function createAudioLibrary() {
+  const audioBase = `${import.meta.env.BASE_URL}audio/`;
   const files = {
-    bienvenida: '/audio/bienvenida.mp3',
-    regularme: '/audio/regularme.mp3',
-    pausa: '/audio/pausa.mp3',
-    reenfocarme: '/audio/reenfocarme.mp3',
-    'ambiente-regularme': '/audio/ambiente-regularme.mp3',
-    'ambiente-pausa': '/audio/ambiente-pausa.mp3',
-    'ambiente-reenfocarme': '/audio/ambiente-reenfocarme.mp3',
+    bienvenida: `${audioBase}bienvenida.mp3`,
+    regularme: `${audioBase}regularme.mp3`,
+    pausa: `${audioBase}pausa.mp3`,
+    reenfocarme: `${audioBase}reenfocarme.mp3`,
+    'ambiente-regularme': `${audioBase}ambiente-regularme.mp3`,
+    'ambiente-pausa': `${audioBase}ambiente-pausa.mp3`,
+    'ambiente-reenfocarme': `${audioBase}ambiente-reenfocarme.mp3`,
   };
 
   return Object.fromEntries(
@@ -477,7 +505,10 @@ function createAudioLibrary() {
       const audio = new Audio(src);
       audio.preload = 'auto';
       audio.loop = key.startsWith('ambiente-');
-      audio.volume = key.startsWith('ambiente-') ? 0.34 : 0.78;
+      audio.volume = key.startsWith('ambiente-') ? 0 : 0.9;
+      audio.userData = {
+        targetVolume: key.startsWith('ambiente-') ? 0.18 : 0.9,
+      };
       audio.addEventListener('error', () => {
         console.warn(`Audio no disponible: ${src}`);
       });
@@ -498,6 +529,7 @@ function unlockAudio() {
 function playAudio(key) {
   const audio = audioLibrary[key];
   if (!audio || !audioUnlocked) return;
+  audio.volume = audio.userData?.targetVolume ?? 0.9;
   audio.currentTime = 0;
   audio.play().catch(() => {
     console.warn(`Audio no disponible o bloqueado por el navegador: ${audio.src}`);
@@ -509,14 +541,39 @@ function playAmbient(key) {
   if (!next || !audioUnlocked) return;
 
   if (activeAmbient && activeAmbient !== next) {
-    activeAmbient.pause();
-    activeAmbient.currentTime = 0;
+    const outgoingAmbient = activeAmbient;
+    fadeAudio(outgoingAmbient, 0, 900, () => {
+      outgoingAmbient.pause();
+      outgoingAmbient.currentTime = 0;
+    });
   }
 
   activeAmbient = next;
+  activeAmbient.volume = Math.min(activeAmbient.volume, 0.02);
   activeAmbient.play().catch(() => {
     console.warn(`Audio ambiente no disponible o bloqueado: ${next.src}`);
   });
+  fadeAudio(activeAmbient, activeAmbient.userData?.targetVolume ?? 0.18, 1200);
+}
+
+function fadeAudio(audio, targetVolume, duration = 800, onComplete) {
+  const previousTimer = ambientFadeTimers.get(audio);
+  if (previousTimer) {
+    clearInterval(previousTimer);
+  }
+
+  const startVolume = audio.volume;
+  const startTime = performance.now();
+  const timer = setInterval(() => {
+    const progress = Math.min((performance.now() - startTime) / duration, 1);
+    audio.volume = THREE.MathUtils.lerp(startVolume, targetVolume, progress);
+    if (progress >= 1) {
+      clearInterval(timer);
+      ambientFadeTimers.delete(audio);
+      onComplete?.();
+    }
+  }, 50);
+  ambientFadeTimers.set(audio, timer);
 }
 
 function onSelectStart(controller) {
@@ -547,7 +604,7 @@ function getPointerButton() {
 }
 
 function pulseButton(button) {
-  button.scale.set(1.08, 1.08, 1);
+  button.scale.copy(button.userData.baseScale).multiplyScalar(1.045);
   setTimeout(() => {
     button.scale.copy(button.userData.baseScale);
   }, 140);
@@ -568,8 +625,8 @@ function setMode(key, options = {}) {
 
   buttonMeshes.forEach((button) => {
     const active = button.userData.mode === key;
-    button.userData.targetGlow = active ? 1 : 0.62;
-    button.userData.baseScale.set(active ? 1.04 : 1, active ? 1.04 : 1, 1);
+    button.userData.targetGlow = active ? 0.2 : 0.06;
+    button.userData.baseScale.set(active ? 1.035 : 1, active ? 1.035 : 1, 1);
     button.scale.copy(button.userData.baseScale);
   });
 
@@ -586,19 +643,19 @@ function updateControllers() {
     const hoveredButton = getPointedButton(controller);
     if (controller.userData.hoveredButton && controller.userData.hoveredButton !== hoveredButton) {
       controller.userData.hoveredButton.userData.targetGlow =
-        controller.userData.hoveredButton.userData.mode === modeState.current ? 1 : 0.62;
+        controller.userData.hoveredButton.userData.mode === modeState.current ? 0.2 : 0.06;
     }
     if (hoveredButton) {
-      hoveredButton.userData.targetGlow = 1.16;
+      hoveredButton.userData.targetGlow = 0.28;
     }
     controller.userData.hoveredButton = hoveredButton;
   });
 
   buttonMeshes.forEach((button) => {
     if (button === pointerButton) {
-      button.userData.targetGlow = 1.16;
+      button.userData.targetGlow = 0.28;
     } else if (!controllers.some((controller) => controller.userData.hoveredButton === button)) {
-      button.userData.targetGlow = button.userData.mode === modeState.current ? 1 : 0.62;
+      button.userData.targetGlow = button.userData.mode === modeState.current ? 0.2 : 0.06;
     }
   });
 }
@@ -610,26 +667,27 @@ function updateCapsule(delta, elapsed) {
   scene.background.lerp(modeState.targetBackground, 0.018);
   scene.fog.color.lerp(modeState.targetFog, 0.018);
   shellMaterial.color.lerp(modeState.wall, 0.018);
+  ceilingSoftener.material.color.lerp(modeState.wall.clone().multiplyScalar(0.9), 0.018);
   rearPanel.material.color.lerp(modeState.wall.clone().multiplyScalar(0.96), 0.018);
   floorMaterial.color.lerp(modeState.floor, 0.018);
 
   ringLightMesh.material.color.lerp(modeState.accent, 0.05);
-  ringLightMesh.material.opacity = 0.42 + breath * 0.38;
-  ringLightMesh.scale.setScalar(1 + breath * 0.012);
+  ringLightMesh.material.opacity = 0.18 + breath * 0.2;
+  ringLightMesh.scale.setScalar(1 + breath * 0.008);
 
   floorGlow.material.color.lerp(modeState.accent, 0.05);
-  floorGlow.material.opacity = breatheOpacity;
+  floorGlow.material.opacity = breatheOpacity * 0.44;
 
   topLight.color.lerp(modeState.accent, 0.05);
-  topLight.intensity = 3.6 * modeState.darkness + breath * 2.1;
+  topLight.intensity = 1.15 * modeState.darkness + breath * 0.64;
   floorLight.color.lerp(modeState.secondary, 0.05);
-  floorLight.intensity = 1.4 * modeState.darkness + breath * 1.4;
-  hemisphereLight.intensity = 0.9 + modeState.darkness * 0.9;
+  floorLight.intensity = 0.34 * modeState.darkness + breath * 0.32;
+  hemisphereLight.intensity = 0.42 + modeState.darkness * 0.45;
 
   wallDots.dots.forEach((dot, index) => {
     dot.material.color.lerp(index % 2 ? modeState.accent : modeState.secondary, 0.04);
     dot.material.opacity =
-      dot.userData.baseOpacity * (0.45 + breath * 0.65) * modeState.darkness;
+      dot.userData.baseOpacity * (0.38 + breath * 0.48) * modeState.darkness;
     dot.position.y +=
       Math.sin(elapsed * 0.18 + dot.userData.phase) * modeState.particleDrift * delta;
   });
@@ -638,13 +696,18 @@ function updateCapsule(delta, elapsed) {
     line.material.color.lerp(modeState.secondary, 0.04);
     line.material.opacity =
       modeState.current === 'reenfocarme'
-        ? 0.16 + Math.sin(elapsed * 0.55 + index) * 0.025
-        : 0.035;
+        ? 0.09 + Math.sin(elapsed * 0.38 + index) * 0.014
+        : 0.018;
   });
 
   buttonMeshes.forEach((button) => {
     const target = button.userData.targetGlow;
-    button.material.opacity = THREE.MathUtils.lerp(button.material.opacity, target, 0.12);
+    button.material.emissive.lerp(button.userData.accent, 0.08);
+    button.material.emissiveIntensity = THREE.MathUtils.lerp(
+      button.material.emissiveIntensity,
+      target,
+      0.12,
+    );
   });
 }
 

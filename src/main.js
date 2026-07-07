@@ -461,7 +461,6 @@ const controllers = [0, 1].map((index) => {
   return controller;
 });
 
-const audioLibrary = createAudioLibrary();
 let audioUnlocked = false;
 let welcomePlayed = false;
 let welcomePending = false;
@@ -474,6 +473,8 @@ let activeAmbient = null;
 const ambientFadeTimers = new WeakMap();
 let activeVoice = null;
 const loggedAudioReady = new Set();
+let runtimeErrorReported = false;
+const audioLibrary = createAudioLibrary();
 
 renderer.xr.addEventListener('sessionstart', () => {
   unlockAudio();
@@ -984,6 +985,7 @@ function updatePointer(event) {
 }
 
 function getPointerButton() {
+  if (renderer.xr.isPresenting) return null;
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects(getSelectableButtons(), false);
   return hits.length ? hits[0].object : null;
@@ -1021,6 +1023,7 @@ function handleButtonSelection(button) {
 }
 
 function updateVolumeFromPointer() {
+  if (renderer.xr.isPresenting) return false;
   raycaster.setFromCamera(pointer, camera);
   const hits = raycaster.intersectObjects(volumeControls, false);
   if (!hits.length) return false;
@@ -1269,8 +1272,15 @@ function updateCapsule(delta, elapsed) {
 function animate() {
   const delta = Math.min(clock.getDelta(), 0.05);
   const elapsed = clock.elapsedTime;
-  updateControllers();
-  updateCapsule(delta, elapsed);
+  try {
+    updateControllers();
+    updateCapsule(delta, elapsed);
+  } catch (error) {
+    if (!runtimeErrorReported) {
+      runtimeErrorReported = true;
+      console.error('Error en loop WebXR:', error);
+    }
+  }
   renderer.render(scene, camera);
 }
 

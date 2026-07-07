@@ -36,6 +36,10 @@ const clock = new THREE.Clock();
 const raycaster = new THREE.Raycaster();
 const tempMatrix = new THREE.Matrix4();
 const pointer = new THREE.Vector2(10, 10);
+const inverseWorldMatrix = new THREE.Matrix4();
+
+const BASE_MODE_KEY = 'regularme';
+const INITIAL_VOLUME = 0.7;
 
 const modeState = {
   current: 'regularme',
@@ -317,11 +321,123 @@ startGroup.add(startLabel);
 
 const startControls = [startButton];
 
+const volumeGroup = new THREE.Group();
+volumeGroup.position.set(0, -0.52, 0.03);
+buttonGroup.add(volumeGroup);
+
+const volumeLabel = createTextPlane('Volumen', {
+  width: 512,
+  height: 128,
+  fontSize: 52,
+  textColor: '#4a3a2f',
+  transparentBackground: true,
+});
+volumeLabel.position.set(-0.92, 0.01, 0.038);
+volumeLabel.scale.set(0.58, 0.18, 1);
+volumeLabel.renderOrder = 55;
+volumeGroup.add(volumeLabel);
+
+const volumeTrack = new THREE.Mesh(
+  new RoundedBoxGeometry(1.18, 0.055, 0.035, 6, 0.026),
+  new THREE.MeshStandardMaterial({
+    color: 0x9a8b7b,
+    roughness: 0.78,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0.5,
+  }),
+);
+volumeTrack.position.set(0.18, 0, 0.02);
+volumeTrack.renderOrder = 54;
+volumeGroup.add(volumeTrack);
+
+const volumeFill = new THREE.Mesh(
+  new RoundedBoxGeometry(1, 0.062, 0.04, 6, 0.028),
+  new THREE.MeshStandardMaterial({
+    color: 0xd1a178,
+    roughness: 0.72,
+    metalness: 0.02,
+    transparent: true,
+    emissive: new THREE.Color(0xb9774f),
+    emissiveIntensity: 0.08,
+  }),
+);
+volumeFill.position.set(0.18, 0, 0.045);
+volumeFill.renderOrder = 56;
+volumeGroup.add(volumeFill);
+
+const volumeKnob = new THREE.Mesh(
+  new RoundedBoxGeometry(0.12, 0.16, 0.065, 6, 0.045),
+  new THREE.MeshStandardMaterial({
+    color: 0xf4eee5,
+    roughness: 0.68,
+    metalness: 0.03,
+    transparent: true,
+    emissive: new THREE.Color(0xb9774f),
+    emissiveIntensity: 0.1,
+  }),
+);
+volumeKnob.renderOrder = 58;
+volumeGroup.add(volumeKnob);
+
+const volumeHitArea = new THREE.Mesh(
+  new THREE.PlaneGeometry(1.34, 0.34),
+  new THREE.MeshBasicMaterial({
+    transparent: true,
+    opacity: 0,
+    depthWrite: false,
+  }),
+);
+volumeHitArea.position.set(0.18, 0, 0.08);
+volumeHitArea.userData.kind = 'volume';
+volumeHitArea.renderOrder = 80;
+volumeGroup.add(volumeHitArea);
+
+const volumeControls = [volumeHitArea];
+
+const backButton = new THREE.Mesh(
+  new RoundedBoxGeometry(0.72, 0.28, 0.065, 8, 0.1),
+  new THREE.MeshStandardMaterial({
+    color: 0xeee5da,
+    roughness: 0.75,
+    metalness: 0.02,
+    transparent: true,
+    opacity: 0,
+    emissive: new THREE.Color(0x8f7460),
+    emissiveIntensity: 0.04,
+  }),
+);
+backButton.position.set(0, -0.95, 0.08);
+backButton.renderOrder = 62;
+backButton.userData.kind = 'back';
+backButton.userData.baseScale = new THREE.Vector3(1, 1, 1);
+backButton.userData.targetGlow = 0.04;
+buttonGroup.add(backButton);
+
+const backLabel = createTextPlane('Volver', {
+  width: 512,
+  height: 128,
+  fontSize: 58,
+  textColor: '#4b3c34',
+  transparentBackground: true,
+});
+backLabel.position.set(0, -0.948, 0.124);
+backLabel.scale.set(0.52, 0.18, 1);
+backLabel.renderOrder = 75;
+backLabel.material.opacity = 0;
+buttonGroup.add(backLabel);
+
+const backControls = [backButton];
+
 const controllerModelFactory = new XRControllerModelFactory();
 const controllers = [0, 1].map((index) => {
   const controller = renderer.xr.getController(index);
   controller.userData.hoveredButton = null;
+  controller.userData.activeSlider = false;
   controller.addEventListener('selectstart', () => onSelectStart(controller));
+  controller.addEventListener('selectend', () => {
+    controller.userData.activeSlider = false;
+  });
   scene.add(controller);
 
   const pointer = new THREE.Line(
@@ -351,6 +467,9 @@ let welcomePlayed = false;
 let welcomePending = false;
 let welcomePlaybackId = 0;
 let experienceStarted = false;
+let activeMode = null;
+let globalVolume = INITIAL_VOLUME;
+let pointerIsDown = false;
 let activeAmbient = null;
 const ambientFadeTimers = new WeakMap();
 let activeVoice = null;
@@ -363,6 +482,7 @@ renderer.xr.addEventListener('sessionstart', () => {
 window.addEventListener(
   'pointerdown',
   (event) => {
+    pointerIsDown = true;
     updatePointer(event);
     const button = getPointerButton();
     if (button) {
@@ -375,6 +495,13 @@ window.addEventListener(
 
 window.addEventListener('pointermove', (event) => {
   updatePointer(event);
+  if (pointerIsDown && experienceStarted) {
+    updateVolumeFromPointer();
+  }
+});
+
+window.addEventListener('pointerup', () => {
+  pointerIsDown = false;
 });
 
 function createWallDots() {
@@ -564,7 +691,7 @@ function createAudioLibrary() {
       const audio = new Audio(src);
       audio.preload = key === 'bienvenida' ? 'auto' : 'none';
       audio.loop = key.startsWith('ambiente-');
-      audio.volume = key.startsWith('ambiente-') ? 0 : 0.92;
+      audio.volume = getScaledVolume(key.startsWith('ambiente-') ? 0 : 0.92);
       audio.userData = {
         key,
         targetVolume: key.startsWith('ambiente-') ? 0.055 : 0.92,
@@ -631,7 +758,7 @@ async function playLoadedWelcome(playbackId) {
   activeVoice = audio;
   audio.pause();
   audio.currentTime = 0;
-  audio.volume = audio.userData?.targetVolume ?? 0.92;
+  audio.volume = getScaledVolume(audio.userData?.targetVolume ?? 0.92);
   audio.onended = () => {
     console.log('bienvenida terminada');
     welcomePending = false;
@@ -659,6 +786,11 @@ async function playLoadedWelcome(playbackId) {
 }
 
 function ensureAudioReady(audio, key) {
+  if (audio.error) {
+    console.warn(`Audio no disponible: ${audio.src}`);
+    return Promise.resolve(false);
+  }
+
   if (audio.readyState >= HTMLMediaElement.HAVE_ENOUGH_DATA) {
     logAudioReady(key);
     return Promise.resolve(true);
@@ -698,6 +830,23 @@ function logAudioReady(key) {
   console.log('bienvenida cargada');
 }
 
+function getScaledVolume(baseVolume) {
+  return THREE.MathUtils.clamp(baseVolume * globalVolume, 0, 1);
+}
+
+function applyGlobalVolume() {
+  Object.values(audioLibrary).forEach((audio) => {
+    if (!audio || audio.paused) return;
+    const baseVolume =
+      audio === activeAmbient
+        ? activeVoice
+          ? 0.025
+          : audio.userData?.targetVolume ?? 0.055
+        : audio.userData?.targetVolume ?? 0.92;
+    audio.volume = getScaledVolume(baseVolume);
+  });
+}
+
 function playVoice(key, { duckAmbient = true } = {}) {
   const audio = audioLibrary[key];
   if (!audio || !audioUnlocked) return;
@@ -706,7 +855,7 @@ function playVoice(key, { duckAmbient = true } = {}) {
   }
 
   activeVoice = audio;
-  audio.volume = audio.userData?.targetVolume ?? 0.9;
+  audio.volume = getScaledVolume(audio.userData?.targetVolume ?? 0.9);
   audio.currentTime = 0;
   if (duckAmbient && activeAmbient) {
     fadeAudio(activeAmbient, 0.025, 260);
@@ -767,12 +916,22 @@ function playAmbient(key) {
   }
 
   activeAmbient = next;
-  activeAmbient.volume = Math.min(activeAmbient.volume, 0.02);
+  activeAmbient.volume = Math.min(activeAmbient.volume, getScaledVolume(0.02));
   activeAmbient.play().catch(() => {
     console.warn(`Audio ambiente no disponible o bloqueado: ${next.src}`);
   });
   const targetVolume = activeVoice ? 0.025 : activeAmbient.userData?.targetVolume ?? 0.055;
   fadeAudio(activeAmbient, targetVolume, 1200);
+}
+
+function stopAmbient(duration = 600) {
+  if (!activeAmbient) return;
+  const outgoingAmbient = activeAmbient;
+  activeAmbient = null;
+  fadeAudio(outgoingAmbient, 0, duration, () => {
+    outgoingAmbient.pause();
+    outgoingAmbient.currentTime = 0;
+  });
 }
 
 function fadeAudio(audio, targetVolume, duration = 800, onComplete) {
@@ -785,7 +944,8 @@ function fadeAudio(audio, targetVolume, duration = 800, onComplete) {
   const startTime = performance.now();
   const timer = setInterval(() => {
     const progress = Math.min((performance.now() - startTime) / duration, 1);
-    audio.volume = THREE.MathUtils.lerp(startVolume, targetVolume, progress);
+    const endVolume = getScaledVolume(targetVolume);
+    audio.volume = THREE.MathUtils.lerp(startVolume, endVolume, progress);
     if (progress >= 1) {
       clearInterval(timer);
       ambientFadeTimers.delete(audio);
@@ -799,6 +959,12 @@ function onSelectStart(controller) {
   const button = getPointedButton(controller);
   if (!button) {
     unlockAudio();
+    return;
+  }
+  if (button.userData.kind === 'volume') {
+    unlockAudio();
+    controller.userData.activeSlider = true;
+    updateVolumeFromController(controller);
     return;
   }
   handleButtonSelection(button);
@@ -824,7 +990,8 @@ function getPointerButton() {
 }
 
 function getSelectableButtons() {
-  return experienceStarted ? modeControls : startControls;
+  if (!experienceStarted) return startControls;
+  return activeMode ? [...modeControls, ...volumeControls, ...backControls] : [...modeControls, ...volumeControls];
 }
 
 function handleButtonSelection(button) {
@@ -838,8 +1005,69 @@ function handleButtonSelection(button) {
 
   if (!experienceStarted) return;
 
+  if (button.userData.kind === 'volume') {
+    updateVolumeFromPointer();
+    return;
+  }
+
+  if (button.userData.kind === 'back') {
+    returnToBase();
+    pulseButton(button);
+    return;
+  }
+
   setMode(button.userData.mode, { playCue: true });
   pulseButton(button);
+}
+
+function updateVolumeFromPointer() {
+  raycaster.setFromCamera(pointer, camera);
+  const hits = raycaster.intersectObjects(volumeControls, false);
+  if (!hits.length) return false;
+  setVolumeFromWorldPoint(hits[0].point);
+  return true;
+}
+
+function updateVolumeFromController(controller) {
+  tempMatrix.identity().extractRotation(controller.matrixWorld);
+  raycaster.ray.origin.setFromMatrixPosition(controller.matrixWorld);
+  raycaster.ray.direction.set(0, 0, -1).applyMatrix4(tempMatrix);
+  const hits = raycaster.intersectObjects(volumeControls, false);
+  if (!hits.length) return false;
+  setVolumeFromWorldPoint(hits[0].point);
+  return true;
+}
+
+function setVolumeFromWorldPoint(worldPoint) {
+  inverseWorldMatrix.copy(volumeGroup.matrixWorld).invert();
+  const localPoint = worldPoint.clone().applyMatrix4(inverseWorldMatrix);
+  const trackWidth = 1.18;
+  const trackCenter = 0.18;
+  const left = trackCenter - trackWidth / 2;
+  setGlobalVolume((localPoint.x - left) / trackWidth);
+}
+
+function setGlobalVolume(value) {
+  globalVolume = THREE.MathUtils.clamp(value, 0, 1);
+  updateVolumeVisuals();
+  applyGlobalVolume();
+}
+
+function updateVolumeVisuals() {
+  const trackWidth = 1.18;
+  const trackCenter = 0.18;
+  const left = trackCenter - trackWidth / 2;
+  const fillWidth = Math.max(trackWidth * globalVolume, 0.001);
+  volumeFill.scale.x = fillWidth;
+  volumeFill.position.x = left + fillWidth / 2;
+  volumeKnob.position.set(left + trackWidth * globalVolume, 0, 0.08);
+}
+
+function returnToBase() {
+  activeMode = null;
+  stopVoice(activeVoice, 260);
+  stopAmbient(420);
+  setMode(BASE_MODE_KEY, { playCue: false, markActive: false });
 }
 
 function pulseButton(button) {
@@ -850,6 +1078,7 @@ function pulseButton(button) {
 }
 
 function setMode(key, options = {}) {
+  const { playCue = false, markActive = true } = options;
   const mode = modes[key];
   modeState.current = key;
   modeState.targetBackground.setHex(mode.background);
@@ -861,15 +1090,16 @@ function setMode(key, options = {}) {
   modeState.darkness = mode.darkness;
   modeState.pulseSpeed = mode.pulseSpeed;
   modeState.particleDrift = mode.particleDrift;
+  activeMode = markActive ? key : null;
 
   buttonMeshes.forEach((button) => {
-    const active = button.userData.mode === key;
+    const active = activeMode === button.userData.mode;
     button.userData.targetGlow = active ? 0.2 : 0.06;
     button.userData.baseScale.set(active ? 1.035 : 1, active ? 1.035 : 1, 1);
     button.scale.copy(button.userData.baseScale);
   });
 
-  if (options.playCue) {
+  if (playCue) {
     welcomePlayed = true;
     stopWelcomeForModeSelection();
     if (activeVoice) {
@@ -877,7 +1107,9 @@ function setMode(key, options = {}) {
     }
     playVoice(mode.audio, { duckAmbient: true });
   }
-  playAmbient(mode.ambient);
+  if (markActive) {
+    playAmbient(mode.ambient);
+  }
 }
 
 function updateControllers() {
@@ -885,13 +1117,19 @@ function updateControllers() {
   const selectableButtons = getSelectableButtons();
 
   controllers.forEach((controller) => {
+    if (controller.userData.activeSlider) {
+      updateVolumeFromController(controller);
+    }
+
     const hoveredButton = getPointedButton(controller);
     if (controller.userData.hoveredButton && controller.userData.hoveredButton !== hoveredButton) {
       if (controller.userData.hoveredButton.userData.kind === 'start') {
         controller.userData.hoveredButton.userData.targetGlow = 0.16;
+      } else if (controller.userData.hoveredButton.userData.kind === 'back') {
+        controller.userData.hoveredButton.userData.targetGlow = 0.04;
       } else {
         controller.userData.hoveredButton.userData.targetGlow =
-          controller.userData.hoveredButton.userData.mode === modeState.current ? 0.2 : 0.06;
+          controller.userData.hoveredButton.userData.mode === activeMode ? 0.2 : 0.06;
       }
     }
     if (hoveredButton) {
@@ -900,7 +1138,7 @@ function updateControllers() {
     controller.userData.hoveredButton = hoveredButton;
   });
 
-  [...modeControls, ...startControls].forEach((button) => {
+  [...modeControls, ...startControls, ...backControls].forEach((button) => {
     if (button === pointerButton) {
       button.userData.targetGlow = 0.28;
     } else if (
@@ -909,8 +1147,10 @@ function updateControllers() {
     ) {
       if (button.userData.kind === 'start') {
         button.userData.targetGlow = 0.16;
+      } else if (button.userData.kind === 'back') {
+        button.userData.targetGlow = 0.04;
       } else {
-        button.userData.targetGlow = button.userData.mode === modeState.current ? 0.2 : 0.06;
+        button.userData.targetGlow = button.userData.mode === activeMode ? 0.2 : 0.06;
       }
     }
   });
@@ -973,6 +1213,30 @@ function updateCapsule(delta, elapsed) {
     label.material.opacity = THREE.MathUtils.lerp(label.material.opacity, targetOpacity, 0.08);
   });
 
+  const panelOpacity = experienceStarted ? 0.86 : 0.18;
+  volumeLabel.material.opacity = THREE.MathUtils.lerp(volumeLabel.material.opacity, panelOpacity, 0.08);
+  volumeTrack.material.opacity = THREE.MathUtils.lerp(volumeTrack.material.opacity, experienceStarted ? 0.5 : 0.14, 0.08);
+  volumeFill.material.opacity = THREE.MathUtils.lerp(volumeFill.material.opacity, experienceStarted ? 1 : 0.24, 0.08);
+  volumeKnob.material.opacity = THREE.MathUtils.lerp(volumeKnob.material.opacity, experienceStarted ? 1 : 0.24, 0.08);
+
+  backButton.material.emissiveIntensity = THREE.MathUtils.lerp(
+    backButton.material.emissiveIntensity,
+    backButton.userData.targetGlow,
+    0.12,
+  );
+  backButton.material.opacity = THREE.MathUtils.lerp(
+    backButton.material.opacity,
+    activeMode ? 0.78 : 0,
+    0.08,
+  );
+  backLabel.material.opacity = THREE.MathUtils.lerp(
+    backLabel.material.opacity,
+    activeMode ? 0.82 : 0,
+    0.08,
+  );
+  backButton.visible = backButton.material.opacity > 0.02;
+  backLabel.visible = backLabel.material.opacity > 0.02;
+
   startControls.forEach((button) => {
     button.material.emissiveIntensity = THREE.MathUtils.lerp(
       button.material.emissiveIntensity,
@@ -1016,5 +1280,6 @@ window.addEventListener('resize', () => {
   renderer.setSize(window.innerWidth, window.innerHeight);
 });
 
-setMode('regularme');
+setGlobalVolume(INITIAL_VOLUME);
+setMode(BASE_MODE_KEY, { markActive: false });
 renderer.setAnimationLoop(animate);
